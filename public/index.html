@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>tuesday.com - Beau Bottles Workflow</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+                        <rect width="30" height="30" rx="8" fill="url(#logoGrad)"/>
+                        <circle cx="10" cy="18" r="2.5" fill="#ff3d57"/>
+                        <circle cx="15" cy="11" r="2.5" fill="#ffcb00"/>
+                        <circle cx="20" cy="18" r="2.5" fill="#00ca72"/>
+                        <defs><linearGradient id="logoGrad" x1="0" y1="0" x2="30" y2="30"><stop stop-color="#6161ff"/><stop offset="1" stop-color="#6c6cff"/></linearGradient></defs>
+                    </svg>
+                    <span>tuesday<span class="logo-sub">work management</span></span>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a class="nav-item" href="#home" id="nav-home">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                    Home
+                </a>
+                <a class="nav-item" href="#my-work" id="nav-my-work">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    My work
+                </a>
+                <div class="sidebar-divider"></div>
+                <div class="nav-section-label">
+                    <span>Workspaces</span>
+                </div>
+                <div class="workspace-header">
+                    <span class="workspace-icon">B</span>
+                    <span>Beau Worksp...</span>
+                </div>
+                <div id="board-list" class="board-list">
+                    <!-- Rendered by JS -->
+                </div>
+            </nav>
+            <div class="sidebar-user" id="sidebar-user">
+                <span class="avatar sidebar-avatar" id="sidebar-avatar"></span>
+                <span class="sidebar-user-name" id="sidebar-user-name"></span>
+                <button class="sidebar-logout" id="logout-btn" title="Log out">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main id="main-content">
+            <!-- Top Header -->
+            <header id="board-header">
+                <div class="board-header-top">
+                    <h1 id="board-title">Beau Bottles Workflow</h1>
+                    <div class="header-actions">
+                        <div class="notif-bell" id="notif-bell">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                            <span class="notif-badge" id="notif-badge" style="display:none;">0</span>
+                        </div>
+                        <div class="notif-dropdown" id="notif-dropdown">
+                            <div class="notif-header">
+                                <span>Notifications</span>
+                                <button class="notif-mark-all" id="notif-mark-all">Mark all read</button>
+                            </div>
+                            <div class="notif-list" id="notif-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="board-tabs" id="board-tabs">
+                    <button class="tab active" data-view="table">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                        Main table
+                    </button>
+                    <span class="tab-add">+</span>
+                </div>
+            </header>
+
+            <!-- Dashboard Page -->
+            <div id="page-home" class="page-container" style="display:none;">
+                <div class="dashboard">
+                    <div class="dash-welcome" id="dash-welcome"></div>
+                    <div class="dash-stats" id="dash-stats"></div>
+                    <div class="dash-section">
+                        <h3>Items Needing Attention</h3>
+                        <div class="dash-attention" id="dash-attention"></div>
+                    </div>
+                    <div class="dash-section">
+                        <h3>Recent Activity</h3>
+                        <div class="dash-activity" id="dash-activity"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- My Work Page -->
+            <div id="page-my-work" class="page-container" style="display:none;">
+                <div class="my-work">
+                    <h2 class="my-work-title">My Work</h2>
+                    <p class="my-work-subtitle">Items assigned to you</p>
+                    <div id="my-work-content"></div>
+                </div>
+            </div>
+
+            <!-- Board Page -->
+            <div id="page-board" class="page-container">
+            <!-- Toolbar -->
+            <div id="toolbar">
+                <div class="btn-new-split" id="new-item-split">
+                    <button class="btn-new-item" id="new-item-btn">New item</button>
+                    <button class="btn-new-caret-btn" id="new-item-caret">&#9662;</button>
+                    <div class="new-item-dropdown" id="new-item-dropdown">
+                        <div class="new-item-dropdown-option" id="new-item-option">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            New Item
+                        </div>
+                        <div class="new-item-dropdown-option" id="new-group-option">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+                            New Group of Items
+                        </div>
+                    </div>
+                </div>
+                <div class="toolbar-actions">
+                    <button class="toolbar-btn" id="search-toggle-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        Search
+                    </button>
+                    <button class="toolbar-btn" id="person-filter-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/></svg>
+                        Person
+                    </button>
+                    <button class="toolbar-btn" id="filter-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        Filter
+                    </button>
+                    <button class="toolbar-btn" id="sort-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="8" y2="18"/></svg>
+                        Sort
+                    </button>
+                    <button class="toolbar-btn" id="hide-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        Hide
+                    </button>
+                    <button class="toolbar-btn" id="groupby-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                        Group by
+                    </button>
+                </div>
+                <div class="search-box" id="search-box" style="display:none;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="search-input" placeholder="Search...">
+                    <button class="search-close" id="search-close-btn">&times;</button>
+                </div>
+            </div>
+
+            <!-- Toolbar Dropdowns -->
+            <div class="toolbar-dropdown" id="person-dropdown">
+                <div class="dropdown-header">Filter by Person</div>
+                <div id="person-filter-list" class="dropdown-body"></div>
+                <div class="dropdown-footer">
+                    <button class="dropdown-clear" id="person-clear">Clear</button>
+                </div>
+            </div>
+
+            <div class="toolbar-dropdown" id="filter-dropdown">
+                <div class="dropdown-header">Filter by Status</div>
+                <div id="status-filter-list" class="dropdown-body"></div>
+                <div class="dropdown-divider"></div>
+                <div class="dropdown-header">Filter by Priority</div>
+                <div id="priority-filter-list" class="dropdown-body"></div>
+                <div class="dropdown-footer">
+                    <button class="dropdown-clear" id="filter-clear">Clear all filters</button>
+                </div>
+            </div>
+
+            <div class="toolbar-dropdown" id="sort-dropdown">
+                <div class="dropdown-header">Sort by</div>
+                <div class="dropdown-body">
+                    <label class="dropdown-option"><input type="radio" name="sort" value="" checked> Default</label>
+                    <label class="dropdown-option"><input type="radio" name="sort" value="title_asc"> Item name (A→Z)</label>
+                    <label class="dropdown-option"><input type="radio" name="sort" value="title_desc"> Item name (Z→A)</label>
+                    <label class="dropdown-option"><input type="radio" name="sort" value="status"> Status</label>
+                    <label class="dropdown-option"><input type="radio" name="sort" value="priority"> Priority</label>
+                    <label class="dropdown-option"><input type="radio" name="sort" value="date_asc"> Date (earliest first)</label>
+                    <label class="dropdown-option"><input type="radio" name="sort" value="date_desc"> Date (latest first)</label>
+                </div>
+            </div>
+
+            <div class="toolbar-dropdown" id="hide-dropdown">
+                <div class="dropdown-header">Toggle columns</div>
+                <div class="dropdown-body">
+                    <label class="dropdown-option"><input type="checkbox" data-col="person" checked> Person</label>
+                    <label class="dropdown-option"><input type="checkbox" data-col="status" checked> Status</label>
+                    <label class="dropdown-option"><input type="checkbox" data-col="priority" checked> Priority</label>
+                    <label class="dropdown-option"><input type="checkbox" data-col="date" checked> Estimated Completion</label>
+                    <label class="dropdown-option"><input type="checkbox" data-col="files" checked> Files</label>
+                </div>
+            </div>
+
+            <div class="toolbar-dropdown" id="groupby-dropdown">
+                <div class="dropdown-header">Group items by</div>
+                <div class="dropdown-body">
+                    <label class="dropdown-option"><input type="radio" name="groupby" value="default" checked> Default (groups)</label>
+                    <label class="dropdown-option"><input type="radio" name="groupby" value="status"> Status</label>
+                    <label class="dropdown-option"><input type="radio" name="groupby" value="priority"> Priority</label>
+                    <label class="dropdown-option"><input type="radio" name="groupby" value="person"> Person</label>
+                </div>
+            </div>
+
+            <!-- Table Content -->
+            <div id="table-content">
+                <!-- Groups rendered by JS -->
+            </div>
+
+            <!-- Add New Group -->
+            <div class="add-group-bar">
+                <button class="add-group-btn" id="add-group-btn">+ Add new group</button>
+            </div>
+            </div><!-- end page-board -->
+
+            <!-- Bulk Action Bar -->
+            <div class="bulk-bar" id="bulk-bar" style="display:none;">
+                <span class="bulk-count" id="bulk-count">0 selected</span>
+                <button class="bulk-btn" data-action="status">Status</button>
+                <button class="bulk-btn" data-action="priority">Priority</button>
+                <button class="bulk-btn" data-action="move">Move to</button>
+                <button class="bulk-btn bulk-btn-delete" data-action="delete">Delete</button>
+                <button class="bulk-close" id="bulk-close">&times;</button>
+            </div>
+
+            <!-- Inline Cell Popup (shared singleton) -->
+            <div class="inline-popup" id="inline-popup"></div>
+
+            <!-- Updates/Comments Side Panel -->
+            <div class="updates-panel" id="updates-panel">
+                <div class="updates-panel-header">
+                    <h3 id="updates-panel-title">Updates</h3>
+                    <button class="modal-close" id="close-updates-panel">&times;</button>
+                </div>
+                <div class="updates-panel-body" id="updates-panel-body"></div>
+                <div class="updates-panel-input">
+                    <div class="updates-author-select" id="updates-author-select"></div>
+                    <div class="updates-input-row">
+                        <textarea id="updates-text" placeholder="Write an update..." rows="2"></textarea>
+                        <button class="btn-save updates-send-btn" id="updates-send-btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Item Edit Modal -->
+    <div class="modal-overlay" id="item-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modal-title">New Item</h2>
+                <button class="modal-close" id="close-modal">&times;</button>
+            </div>
+            <form id="item-form">
+                <input type="hidden" id="item-id">
+                <input type="hidden" id="item-group-id">
+                <div class="form-group">
+                    <label for="item-title">Item name *</label>
+                    <input type="text" id="item-title" required placeholder="Enter item name">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="item-status">Status</label>
+                        <select id="item-status">
+                            <option value="">— None —</option>
+                            <option value="working_on_it">Working on it</option>
+                            <option value="done">Done</option>
+                            <option value="stuck">Stuck</option>
+                            <option value="ongoing">Ongoing</option>
+                            <option value="not_started">Not Started</option>
+                            <option value="input_needed">Input Needed</option>
+                            <option value="in_process">In Process</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="item-priority">Priority</label>
+                        <select id="item-priority">
+                            <option value="">— None —</option>
+                            <option value="critical">Critical ⚠️</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="item-person">Person(s)</label>
+                    <div id="person-checkboxes" class="person-checkboxes">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="item-date">Estimated Completion</label>
+                    <input type="date" id="item-date">
+                </div>
+                <div class="form-group">
+                    <label>Files</label>
+                    <div class="file-upload-area" id="file-upload-area">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        <span>Click or drag files here</span>
+                        <input type="file" id="file-input" multiple hidden>
+                    </div>
+                    <div id="attachment-list" class="attachment-list"></div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-delete" id="delete-item-btn" style="display:none;">Delete</button>
+                    <div class="modal-actions-right">
+                        <button type="button" class="btn-cancel" id="cancel-modal">Cancel</button>
+                        <button type="submit" class="btn-save">Save</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Group Edit Modal -->
+    <div class="modal-overlay" id="group-modal">
+        <div class="modal modal-sm">
+            <div class="modal-header">
+                <h2 id="group-modal-title">New Group</h2>
+                <button class="modal-close" id="close-group-modal">&times;</button>
+            </div>
+            <form id="group-form">
+                <input type="hidden" id="group-id">
+                <div class="form-group">
+                    <label for="group-name">Group name *</label>
+                    <input type="text" id="group-name" required placeholder="e.g., Website Optimization">
+                </div>
+                <div class="form-group">
+                    <label>Color</label>
+                    <div class="color-picker" id="group-color-picker">
+                        <button type="button" class="color-swatch" data-color="#ff642e" style="background:#ff642e"></button>
+                        <button type="button" class="color-swatch active" data-color="#fdab3d" style="background:#fdab3d"></button>
+                        <button type="button" class="color-swatch" data-color="#00c875" style="background:#00c875"></button>
+                        <button type="button" class="color-swatch" data-color="#579bfc" style="background:#579bfc"></button>
+                        <button type="button" class="color-swatch" data-color="#a25ddc" style="background:#a25ddc"></button>
+                        <button type="button" class="color-swatch" data-color="#e2445c" style="background:#e2445c"></button>
+                        <button type="button" class="color-swatch" data-color="#0086c0" style="background:#0086c0"></button>
+                        <button type="button" class="color-swatch" data-color="#9cd326" style="background:#9cd326"></button>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-delete" id="delete-group-btn" style="display:none;">Delete group</button>
+                    <div class="modal-actions-right">
+                        <button type="button" class="btn-cancel" id="cancel-group-modal">Cancel</button>
+                        <button type="submit" class="btn-save">Save</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="modal modal-sm">
+            <div class="modal-header"><h2>Confirm</h2></div>
+            <p id="confirm-message" class="confirm-message"></p>
+            <div class="modal-actions" style="padding:0 24px 24px;">
+                <div class="modal-actions-right">
+                    <button class="btn-cancel" id="confirm-cancel">Cancel</button>
+                    <button class="btn-delete" id="confirm-ok">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

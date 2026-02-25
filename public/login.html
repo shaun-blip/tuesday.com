@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tuesday.com - Log in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Figtree',sans-serif;min-height:100vh;display:flex;background:#f6f7fb}
+.login-left{width:480px;background:linear-gradient(135deg,#292f4c 0%,#1a1f36 100%);color:white;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:60px;position:relative;overflow:hidden}
+.login-left::before{content:'';position:absolute;width:300px;height:300px;border-radius:50%;background:rgba(0,115,234,.15);top:-80px;right:-100px}
+.login-left::after{content:'';position:absolute;width:200px;height:200px;border-radius:50%;background:rgba(0,200,117,.1);bottom:-60px;left:-60px}
+.brand{position:relative;z-index:1;text-align:center}
+.brand-logo{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:32px}
+.brand-dots{display:flex;gap:4px}
+.brand-dots span{width:10px;height:10px;border-radius:50%}
+.brand-dots span:nth-child(1){background:#e2445c}
+.brand-dots span:nth-child(2){background:#fdab3d}
+.brand-dots span:nth-child(3){background:#00c875}
+.brand-name{font-size:32px;font-weight:700;letter-spacing:-.5px}
+.brand-sub{font-size:13px;color:rgba(255,255,255,.5);margin-top:4px;letter-spacing:1px}
+.brand h2{font-size:22px;font-weight:500;margin-bottom:12px}
+.brand p{font-size:14px;color:rgba(255,255,255,.7);line-height:1.6;max-width:300px}
+.brand-features{list-style:none;margin-top:24px;display:flex;flex-direction:column;gap:12px}
+.brand-features li{display:flex;align-items:center;gap:10px;font-size:14px;color:rgba(255,255,255,.8)}
+.brand-features li::before{content:'✓';display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#00c875;color:white;font-size:11px;flex-shrink:0}
+.login-right{flex:1;display:flex;align-items:center;justify-content:center;padding:40px}
+.login-box{width:100%;max-width:400px}
+.login-box h1{font-size:28px;font-weight:700;color:#323338;margin-bottom:8px}
+.login-box .subtitle{font-size:14px;color:#676879;margin-bottom:32px}
+.form-group{margin-bottom:20px}
+.form-group label{display:block;font-size:13px;font-weight:500;color:#323338;margin-bottom:6px}
+.form-group input{width:100%;padding:10px 14px;border:1px solid #d0d4e4;border-radius:6px;font-size:14px;font-family:inherit;transition:border .15s}
+.form-group input:focus{outline:none;border-color:#0073ea;box-shadow:0 0 0 3px rgba(0,115,234,.1)}
+.form-row{display:flex;gap:12px}
+.form-row .form-group{flex:1}
+.color-picker{display:flex;gap:8px;flex-wrap:wrap}
+.color-opt{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .1s,border .1s}
+.color-opt:hover{transform:scale(1.15)}
+.color-opt.active{border-color:#323338;transform:scale(1.15)}
+.btn{width:100%;padding:12px;background:#0073ea;color:white;border:none;border-radius:6px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s}
+.btn:hover{background:#0060c2}
+.btn:active{background:#004d9e}
+.toggle-text{text-align:center;margin-top:20px;font-size:13px;color:#676879}
+.toggle-text a{color:#0073ea;cursor:pointer;text-decoration:none;font-weight:500}
+.toggle-text a:hover{text-decoration:underline}
+.error-msg{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px;display:none}
+.error-msg.show{display:block}
+.success-msg{background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px;display:none}
+.success-msg.show{display:block}
+@media(max-width:900px){
+    .login-left{display:none}
+    .login-right{padding:24px}
+}
+</style>
+</head>
+<body>
+<div class="login-left">
+    <div class="brand">
+        <div class="brand-logo">
+            <div class="brand-dots"><span></span><span></span><span></span></div>
+            <div>
+                <div class="brand-name">tuesday</div>
+                <div class="brand-sub">work management</div>
+            </div>
+        </div>
+        <h2>Manage your team's workflow</h2>
+        <p>Collaborate in real-time with your team on projects, tasks, and deadlines.</p>
+        <ul class="brand-features">
+            <li>Real-time project boards</li>
+            <li>Team comments & updates</li>
+            <li>Email notifications</li>
+            <li>Drag-and-drop task management</li>
+        </ul>
+    </div>
+</div>
+<div class="login-right">
+    <div class="login-box">
+        <!-- Login Form -->
+        <div id="login-form">
+            <h1>Welcome back</h1>
+            <p class="subtitle">Log in to your tuesday.com account</p>
+            <div class="error-msg" id="login-error"></div>
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="login-email" placeholder="name@company.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" placeholder="Enter your password" required>
+                </div>
+                <button type="submit" class="btn" id="login-btn">Log in</button>
+            </form>
+            <p class="toggle-text">Don't have an account? <a onclick="showRegister()">Create one</a></p>
+        </div>
+
+        <!-- Register Form -->
+        <div id="register-form" style="display:none">
+            <h1>Create account</h1>
+            <p class="subtitle">Join your team on tuesday.com</p>
+            <div class="error-msg" id="register-error"></div>
+            <div class="success-msg" id="register-success"></div>
+            <form onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" id="reg-name" placeholder="e.g. Shaun Hunte" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Initials</label>
+                        <input type="text" id="reg-initials" placeholder="SH" maxlength="3" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Avatar Color</label>
+                        <div class="color-picker" id="color-picker">
+                            <div class="color-opt active" data-color="#fdab3d" style="background:#fdab3d"></div>
+                            <div class="color-opt" data-color="#00c875" style="background:#00c875"></div>
+                            <div class="color-opt" data-color="#e2445c" style="background:#e2445c"></div>
+                            <div class="color-opt" data-color="#ff158a" style="background:#ff158a"></div>
+                            <div class="color-opt" data-color="#579bfc" style="background:#579bfc"></div>
+                            <div class="color-opt" data-color="#a25ddc" style="background:#a25ddc"></div>
+                            <div class="color-opt" data-color="#0073ea" style="background:#0073ea"></div>
+                            <div class="color-opt" data-color="#333333" style="background:#333333"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="reg-email" placeholder="name@company.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="reg-password" placeholder="At least 6 characters" minlength="6" required>
+                </div>
+                <button type="submit" class="btn" id="reg-btn">Create account</button>
+            </form>
+            <p class="toggle-text">Already have an account? <a onclick="showLogin()">Log in</a></p>
+        </div>
+    </div>
+</div>
+
+<script>
+// If already logged in, redirect
+if (localStorage.getItem('tuesday_token')) {
+    window.location.href = '/index.html';
+}
+
+let selectedColor = '#fdab3d';
+
+document.getElementById('color-picker').addEventListener('click', e => {
+    const opt = e.target.closest('.color-opt');
+    if (!opt) return;
+    document.querySelectorAll('.color-opt').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    selectedColor = opt.dataset.color;
+});
+
+// Auto-fill initials from name
+document.getElementById('reg-name').addEventListener('input', e => {
+    const parts = e.target.value.trim().split(/\s+/);
+    const initials = parts.map(p => p[0] || '').join('').toUpperCase().substring(0, 2);
+    document.getElementById('reg-initials').value = initials;
+});
+
+function showRegister() {
+    document.getElementById('login-form').style.display = 'none';
+    document.getElementById('register-form').style.display = 'block';
+}
+function showLogin() {
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('login-form').style.display = 'block';
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('login-error');
+    errEl.classList.remove('show');
+    const btn = document.getElementById('login-btn');
+    btn.textContent = 'Logging in...';
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: document.getElementById('login-email').value,
+                password: document.getElementById('login-password').value
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+        localStorage.setItem('tuesday_token', data.token);
+        localStorage.setItem('tuesday_user', JSON.stringify(data.user));
+        window.location.href = '/index.html#home';
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.add('show');
+    } finally {
+        btn.textContent = 'Log in';
+        btn.disabled = false;
+    }
+}
+
+async function handleRegister(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('register-error');
+    const sucEl = document.getElementById('register-success');
+    errEl.classList.remove('show');
+    sucEl.classList.remove('show');
+    const btn = document.getElementById('reg-btn');
+    btn.textContent = 'Creating...';
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: document.getElementById('reg-name').value,
+                email: document.getElementById('reg-email').value,
+                password: document.getElementById('reg-password').value,
+                initials: document.getElementById('reg-initials').value,
+                color: selectedColor
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Registration failed');
+        localStorage.setItem('tuesday_token', data.token);
+        localStorage.setItem('tuesday_user', JSON.stringify(data.user));
+        window.location.href = '/index.html#home';
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.add('show');
+    } finally {
+        btn.textContent = 'Create account';
+        btn.disabled = false;
+    }
+}
+</script>
+</body>
+</html>
