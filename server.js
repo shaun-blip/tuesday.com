@@ -64,6 +64,20 @@ app.post('/api/auth/login', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.put('/api/auth/change-password', auth, (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password required' });
+        if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+        const user = db.prepare('SELECT id, password_hash FROM users WHERE id = ?').get(req.userId);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!bcrypt.compareSync(currentPassword, user.password_hash)) return res.status(401).json({ error: 'Current password is incorrect' });
+        const newHash = bcrypt.hashSync(newPassword, 10);
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.userId);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/auth/me', auth, (req, res) => {
     try {
         const user = db.prepare('SELECT id, email, name, initials, color FROM users WHERE id = ?').get(req.userId);
