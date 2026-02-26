@@ -1191,6 +1191,58 @@ async function init() {
     }
     window.addEventListener('hashchange', handleHash);
 
+    // ===== Change Password =====
+    const passwordModal = $('#password-modal');
+    const passwordForm = $('#password-form');
+    const passwordError = $('#password-error');
+    const passwordSuccess = $('#password-success');
+
+    $('#change-password-btn').addEventListener('click', () => {
+        passwordForm.reset();
+        passwordError.style.display = 'none';
+        passwordSuccess.style.display = 'none';
+        passwordModal.classList.add('open');
+        $('#current-password').focus();
+    });
+
+    $('#close-password-modal').addEventListener('click', () => passwordModal.classList.remove('open'));
+    $('#cancel-password-modal').addEventListener('click', () => passwordModal.classList.remove('open'));
+    passwordModal.addEventListener('click', (e) => { if (e.target === passwordModal) passwordModal.classList.remove('open'); });
+
+    passwordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        passwordError.style.display = 'none';
+        passwordSuccess.style.display = 'none';
+
+        const currentPassword = $('#current-password').value;
+        const newPassword = $('#new-password').value;
+        const confirmPassword = $('#confirm-new-password').value;
+
+        if (newPassword !== confirmPassword) {
+            passwordError.textContent = 'New passwords do not match';
+            passwordError.style.display = 'block';
+            return;
+        }
+
+        const btn = $('#save-password-btn');
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+
+        try {
+            await api('PUT', '/api/auth/change-password', { currentPassword, newPassword });
+            passwordSuccess.textContent = 'Password changed successfully!';
+            passwordSuccess.style.display = 'block';
+            passwordForm.reset();
+            setTimeout(() => passwordModal.classList.remove('open'), 1500);
+        } catch (err) {
+            passwordError.textContent = err.message;
+            passwordError.style.display = 'block';
+        } finally {
+            btn.textContent = 'Change Password';
+            btn.disabled = false;
+        }
+    });
+
     // ===== Logout =====
     $('#logout-btn').addEventListener('click', () => {
         localStorage.removeItem('tuesday_token');
