@@ -449,6 +449,18 @@ html, body { height:100%; font-family:'Figtree', -apple-system, BlinkMacSystemFo
 .updates-input-row textarea:focus { border-color:var(--primary); }
 .updates-send-btn { padding:8px 10px !important; flex-shrink:0; height:fit-content; }
 
+/* Mention dropdown */
+.mention-dropdown { display:none; position:absolute; bottom:100%; left:0; right:40px; background:#fff; border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 4px 12px rgba(0,0,0,.12); max-height:180px; overflow-y:auto; z-index:50; margin-bottom:4px; }
+.mention-dropdown.open { display:block; }
+.mention-option { display:flex; align-items:center; gap:10px; padding:8px 12px; cursor:pointer; font-size:13px; transition:background 100ms; }
+.mention-option:hover, .mention-option.active { background:var(--row-hover); }
+.mention-option .avatar { width:26px; height:26px; font-size:10px; font-weight:600; flex-shrink:0; }
+.mention-option-name { font-weight:500; color:var(--text); }
+.mention-option-email { font-size:12px; color:var(--text-muted); }
+
+/* Highlighted @mentions in update text */
+.mention-tag { color:var(--primary); font-weight:500; cursor:default; }
+
 /* Updates icon in table row */
 .updates-icon-cell { width:36px; text-align:center; padding:0 2px; }
 .updates-icon { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; border:none; background:transparent; cursor:pointer; color:var(--text-muted); position:relative; transition:all 100ms; }

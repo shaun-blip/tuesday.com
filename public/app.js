@@ -419,7 +419,7 @@ function renderUpdatesBody(item) {
         const member = state.members.find(m => m.id === upd.author);
         const el = document.createElement('div');
         el.className = 'update-item';
-        el.innerHTML = `<div class="update-header"><span class="avatar" style="background:${member?member.color:'#999'};width:28px;height:28px;font-size:11px;font-weight:600;">${member?esc(member.name):'?'}</span><span class="update-author-name">${member?esc(member.fullName):'Unknown'}</span><span class="update-timestamp">${formatTimestamp(upd.timestamp)}</span></div><div class="update-text">${esc(upd.text)}</div>`;
+        el.innerHTML = `<div class="update-header"><span class="avatar" style="background:${member?member.color:'#999'};width:28px;height:28px;font-size:11px;font-weight:600;">${member?esc(member.name):'?'}</span><span class="update-author-name">${member?esc(member.fullName):'Unknown'}</span><span class="update-timestamp">${formatTimestamp(upd.timestamp)}</span></div><div class="update-text">${highlightMentions(upd.text)}</div>`;
         body.appendChild(el);
     });
 }
@@ -450,6 +450,118 @@ async function postUpdate() {
     // Re-render updates panel for same item
     const item = currentUpdatesParentId ? findSubitem(currentUpdatesParentId, currentUpdatesItemId) : state.items.find(it => it.id === currentUpdatesItemId);
     if (item) renderUpdatesBody(item);
+}
+
+// ===== @Mention Autocomplete =====
+let mentionActive = false;
+let mentionQuery = '';
+let mentionStartPos = -1;
+let mentionSelectedIdx = 0;
+
+function getMentionDropdown() { return $('#mention-dropdown'); }
+
+function getFilteredMembers(query) {
+    const q = query.toLowerCase();
+    return state.members.filter(m => m.fullName.toLowerCase().includes(q) || m.name.toLowerCase().includes(q));
+}
+
+function showMentionDropdown(matches) {
+    const dd = getMentionDropdown();
+    dd.innerHTML = '';
+    matches.forEach((m, i) => {
+        const opt = document.createElement('div');
+        opt.className = 'mention-option' + (i === mentionSelectedIdx ? ' active' : '');
+        opt.innerHTML = `<span class="avatar" style="background:${m.color};width:26px;height:26px;font-size:10px;font-weight:600;">${esc(m.name)}</span><span class="mention-option-name">${esc(m.fullName)}</span>`;
+        opt.addEventListener('mousedown', (e) => { e.preventDefault(); insertMention(m); });
+        opt.addEventListener('mouseenter', () => {
+            mentionSelectedIdx = i;
+            dd.querySelectorAll('.mention-option').forEach((o, j) => o.classList.toggle('active', j === i));
+        });
+        dd.appendChild(opt);
+    });
+    dd.classList.add('open');
+}
+
+function hideMentionDropdown() {
+    getMentionDropdown().classList.remove('open');
+    mentionActive = false;
+    mentionStartPos = -1;
+    mentionSelectedIdx = 0;
+}
+
+function insertMention(member) {
+    const textarea = $('#updates-text');
+    const before = textarea.value.substring(0, mentionStartPos);
+    const after = textarea.value.substring(textarea.selectionStart);
+    const mention = '@' + member.fullName;
+    textarea.value = before + mention + ' ' + after;
+    const newPos = before.length + mention.length + 1;
+    textarea.setSelectionRange(newPos, newPos);
+    textarea.focus();
+    hideMentionDropdown();
+}
+
+function handleMentionInput(e) {
+    const textarea = e.target;
+    const pos = textarea.selectionStart;
+    const text = textarea.value;
+
+    // Look backward from cursor for an @ that starts a mention
+    let atPos = -1;
+    for (let i = pos - 1; i >= 0; i--) {
+        if (text[i] === '@') { atPos = i; break; }
+        if (text[i] === ' ' && i < pos - 1 && atPos === -1) { /* keep searching for @ before a space only if query might have spaces (names do) */ }
+        if (text[i] === '\n') break;
+    }
+
+    if (atPos >= 0 && (atPos === 0 || text[atPos - 1] === ' ' || text[atPos - 1] === '\n')) {
+        mentionQuery = text.substring(atPos + 1, pos);
+        mentionStartPos = atPos;
+        const matches = getFilteredMembers(mentionQuery);
+        if (matches.length > 0) {
+            mentionActive = true;
+            mentionSelectedIdx = Math.min(mentionSelectedIdx, matches.length - 1);
+            showMentionDropdown(matches);
+            return;
+        }
+    }
+    hideMentionDropdown();
+}
+
+function handleMentionKeydown(e) {
+    if (!mentionActive) return;
+    const matches = getFilteredMembers(mentionQuery);
+    if (!matches.length) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        mentionSelectedIdx = (mentionSelectedIdx + 1) % matches.length;
+        showMentionDropdown(matches);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        mentionSelectedIdx = (mentionSelectedIdx - 1 + matches.length) % matches.length;
+        showMentionDropdown(matches);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        insertMention(matches[mentionSelectedIdx]);
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        hideMentionDropdown();
+    }
+}
+
+function highlightMentions(text) {
+    let escaped = esc(text);
+    // Sort members by name length descending to match longest names first
+    const sorted = [...state.members].sort((a, b) => b.fullName.length - a.fullName.length);
+    for (const m of sorted) {
+        const mention = '@' + esc(m.fullName);
+        if (escaped.includes(mention)) {
+            escaped = escaped.split(mention).join(`<span class="mention-tag">${mention}</span>`);
+        }
+    }
+    return escaped;
 }
 
 function formatTimestamp(ts) {
@@ -1156,7 +1268,12 @@ async function init() {
     // Updates panel
     $('#close-updates-panel').addEventListener('click', closeUpdatesPanel);
     $('#updates-send-btn').addEventListener('click', postUpdate);
-    $('#updates-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postUpdate(); } });
+    $('#updates-text').addEventListener('keydown', (e) => {
+        handleMentionKeydown(e);
+        if (!mentionActive && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postUpdate(); }
+    });
+    $('#updates-text').addEventListener('input', handleMentionInput);
+    $('#updates-text').addEventListener('blur', () => { setTimeout(hideMentionDropdown, 150); });
 
     // Confirm
     confirmOk.addEventListener('click', () => { if(confirmCallback) confirmCallback(); closeConfirm(); });
