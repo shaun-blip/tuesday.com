@@ -8,7 +8,8 @@ const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 
 const { db, getBoard, getMyWork, getDashboard, logActivity, createNotification } = require('./db');
-const { initTransporter, sendAssignmentEmail, sendUpdateEmail, sendMentionEmail } = require('./email');
+const { initTransporter, sendAssignmentEmail, sendUpdateEmail, sendMentionEmail, sendPasswordResetEmail } = require('./email');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -86,6 +87,46 @@ app.get('/api/auth/me', auth, (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== Forgot / Reset Password =====
+app.post('/api/auth/forgot-password', (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email is required' });
+        // Always return success to avoid revealing whether email exists
+        const user = db.prepare('SELECT id, name, email FROM users WHERE email = ?').get(email);
+        if (!user) return res.json({ ok: true });
+        // Invalidate any existing unused tokens for this user
+        db.prepare('UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0').run(user.id);
+        // Generate a secure reset token
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
+        db.prepare('INSERT INTO password_resets (id, user_id, token, expires_at) VALUES (?,?,?,?)')
+          .run(uuidv4(), user.id, token, expiresAt);
+        // Send reset email (non-blocking)
+        const resetUrl = `${req.protocol}://${req.get('host')}/login.html#reset=${token}`;
+        sendPasswordResetEmail(user.email, user.name, resetUrl).catch(() => {});
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/auth/reset-password', (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+        if (!token || !newPassword) return res.status(400).json({ error: 'Token and new password are required' });
+        if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        const reset = db.prepare('SELECT * FROM password_resets WHERE token = ? AND used = 0').get(token);
+        if (!reset) return res.status(400).json({ error: 'Invalid or expired reset link' });
+        if (Date.now() > reset.expires_at) {
+            db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?').run(reset.id);
+            return res.status(400).json({ error: 'Reset link has expired. Please request a new one.' });
+        }
+        const hash = bcrypt.hashSync(newPassword, 10);
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, reset.user_id);
+        db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?').run(reset.id);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== Board Route (full state) =====
 app.get('/api/board', auth, (req, res) => {
     try { res.json(getBoard()); }
@@ -116,6 +157,17 @@ app.post('/api/groups', auth, (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// NOTE: /reorder must be before /:id so Express doesn't match "reorder" as an :id param
+app.put('/api/groups/reorder', auth, (req, res) => {
+    try {
+        const { items } = req.body; // [{id, position}]
+        const stmt = db.prepare('UPDATE groups_ SET position = ? WHERE id = ?');
+        const tx = db.transaction(() => { for (const i of items) stmt.run(i.position, i.id); });
+        tx();
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.put('/api/groups/:id', auth, (req, res) => {
     try {
         const { name, color, collapsed } = req.body;
@@ -137,16 +189,6 @@ app.delete('/api/groups/:id', auth, (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/groups/reorder', auth, (req, res) => {
-    try {
-        const { items } = req.body; // [{id, position}]
-        const stmt = db.prepare('UPDATE groups_ SET position = ? WHERE id = ?');
-        const tx = db.transaction(() => { for (const i of items) stmt.run(i.position, i.id); });
-        tx();
-        res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 // ===== Item Routes =====
 app.post('/api/items', auth, (req, res) => {
     try {
@@ -163,6 +205,43 @@ app.post('/api/items', auth, (req, res) => {
         }
         logActivity(req.userId, 'created_item', id, title, null);
         res.json({ id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// NOTE: /reorder and /bulk must be before /:id so Express doesn't match them as :id params
+app.put('/api/items/reorder', auth, (req, res) => {
+    try {
+        const { items } = req.body; // [{id, group_id, position}]
+        const stmt = db.prepare('UPDATE items SET group_id = ?, position = ? WHERE id = ?');
+        const tx = db.transaction(() => { for (const i of items) stmt.run(i.group_id, i.position, i.id); });
+        tx();
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/items/bulk', auth, (req, res) => {
+    try {
+        const { itemIds, field, value } = req.body;
+        if (!itemIds || !itemIds.length || !field) return res.status(400).json({ error: 'itemIds and field required' });
+        const allowed = ['status', 'priority', 'group_id'];
+        if (!allowed.includes(field)) return res.status(400).json({ error: 'Invalid field' });
+        const stmt = db.prepare(`UPDATE items SET ${field} = ? WHERE id = ?`);
+        const tx = db.transaction(() => { for (const id of itemIds) stmt.run(value, id); });
+        tx();
+        logActivity(req.userId, 'bulk_update', null, null, `Updated ${itemIds.length} items: ${field} = ${value}`);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/items/bulk', auth, (req, res) => {
+    try {
+        const { itemIds } = req.body;
+        if (!itemIds || !itemIds.length) return res.status(400).json({ error: 'itemIds required' });
+        const stmt = db.prepare('DELETE FROM items WHERE id = ?');
+        const tx = db.transaction(() => { for (const id of itemIds) stmt.run(id); });
+        tx();
+        logActivity(req.userId, 'bulk_delete', null, null, `Deleted ${itemIds.length} items`);
+        res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -211,42 +290,6 @@ app.delete('/api/items/:id', auth, (req, res) => {
         if (!item) return res.status(404).json({ error: 'Item not found' });
         db.prepare('DELETE FROM items WHERE id = ?').run(req.params.id);
         logActivity(req.userId, 'deleted_item', req.params.id, item.title, null);
-        res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/items/reorder', auth, (req, res) => {
-    try {
-        const { items } = req.body; // [{id, group_id, position}]
-        const stmt = db.prepare('UPDATE items SET group_id = ?, position = ? WHERE id = ?');
-        const tx = db.transaction(() => { for (const i of items) stmt.run(i.group_id, i.position, i.id); });
-        tx();
-        res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/items/bulk', auth, (req, res) => {
-    try {
-        const { itemIds, field, value } = req.body;
-        if (!itemIds || !itemIds.length || !field) return res.status(400).json({ error: 'itemIds and field required' });
-        const allowed = ['status', 'priority', 'group_id'];
-        if (!allowed.includes(field)) return res.status(400).json({ error: 'Invalid field' });
-        const stmt = db.prepare(`UPDATE items SET ${field} = ? WHERE id = ?`);
-        const tx = db.transaction(() => { for (const id of itemIds) stmt.run(value, id); });
-        tx();
-        logActivity(req.userId, 'bulk_update', null, null, `Updated ${itemIds.length} items: ${field} = ${value}`);
-        res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/items/bulk', auth, (req, res) => {
-    try {
-        const { itemIds } = req.body;
-        if (!itemIds || !itemIds.length) return res.status(400).json({ error: 'itemIds required' });
-        const stmt = db.prepare('DELETE FROM items WHERE id = ?');
-        const tx = db.transaction(() => { for (const id of itemIds) stmt.run(id); });
-        tx();
-        logActivity(req.userId, 'bulk_delete', null, null, `Deleted ${itemIds.length} items`);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

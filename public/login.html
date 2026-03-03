@@ -94,7 +94,44 @@ body{font-family:'Figtree',sans-serif;min-height:100vh;display:flex;background:#
                 </div>
                 <button type="submit" class="btn" id="login-btn">Log in</button>
             </form>
+            <p class="toggle-text"><a onclick="showForgot()">Forgot password?</a></p>
             <p class="toggle-text">Don't have an account? <a onclick="showRegister()">Create one</a></p>
+        </div>
+
+        <!-- Forgot Password Form -->
+        <div id="forgot-form" style="display:none">
+            <h1>Reset password</h1>
+            <p class="subtitle">Enter your email and we'll send you a reset link</p>
+            <div class="error-msg" id="forgot-error"></div>
+            <div class="success-msg" id="forgot-success"></div>
+            <form onsubmit="handleForgot(event)">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="forgot-email" placeholder="name@company.com" required>
+                </div>
+                <button type="submit" class="btn" id="forgot-btn">Send reset link</button>
+            </form>
+            <p class="toggle-text"><a onclick="showLogin()">Back to login</a></p>
+        </div>
+
+        <!-- Reset Password Form (shown via #reset=TOKEN) -->
+        <div id="reset-form" style="display:none">
+            <h1>Set new password</h1>
+            <p class="subtitle">Enter your new password below</p>
+            <div class="error-msg" id="reset-error"></div>
+            <div class="success-msg" id="reset-success"></div>
+            <form onsubmit="handleReset(event)">
+                <div class="form-group">
+                    <label>New Password</label>
+                    <input type="password" id="reset-password" placeholder="At least 6 characters" minlength="6" required>
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" id="reset-confirm" placeholder="Re-enter new password" minlength="6" required>
+                </div>
+                <button type="submit" class="btn" id="reset-btn">Reset password</button>
+            </form>
+            <p class="toggle-text"><a onclick="showLogin()">Back to login</a></p>
         </div>
 
         <!-- Register Form -->
@@ -143,8 +180,8 @@ body{font-family:'Figtree',sans-serif;min-height:100vh;display:flex;background:#
 </div>
 
 <script>
-// If already logged in, redirect
-if (localStorage.getItem('tuesday_token')) {
+// If already logged in, redirect (but not if resetting password)
+if (localStorage.getItem('tuesday_token') && !window.location.hash.startsWith('#reset=')) {
     window.location.href = '/index.html';
 }
 
@@ -165,14 +202,16 @@ document.getElementById('reg-name').addEventListener('input', e => {
     document.getElementById('reg-initials').value = initials;
 });
 
-function showRegister() {
+function hideAllForms() {
     document.getElementById('login-form').style.display = 'none';
-    document.getElementById('register-form').style.display = 'block';
-}
-function showLogin() {
     document.getElementById('register-form').style.display = 'none';
-    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('forgot-form').style.display = 'none';
+    document.getElementById('reset-form').style.display = 'none';
 }
+function showRegister() { hideAllForms(); document.getElementById('register-form').style.display = 'block'; }
+function showLogin() { hideAllForms(); document.getElementById('login-form').style.display = 'block'; window.location.hash = ''; }
+function showForgot() { hideAllForms(); document.getElementById('forgot-form').style.display = 'block'; }
+function showReset() { hideAllForms(); document.getElementById('reset-form').style.display = 'block'; }
 
 async function handleLogin(e) {
     e.preventDefault();
@@ -203,6 +242,79 @@ async function handleLogin(e) {
         btn.disabled = false;
     }
 }
+
+async function handleForgot(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('forgot-error');
+    const sucEl = document.getElementById('forgot-success');
+    errEl.classList.remove('show');
+    sucEl.classList.remove('show');
+    const btn = document.getElementById('forgot-btn');
+    btn.textContent = 'Sending...';
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: document.getElementById('forgot-email').value })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        sucEl.textContent = 'If an account exists with that email, a reset link has been sent. Check your inbox.';
+        sucEl.classList.add('show');
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.add('show');
+    } finally {
+        btn.textContent = 'Send reset link';
+        btn.disabled = false;
+    }
+}
+
+async function handleReset(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('reset-error');
+    const sucEl = document.getElementById('reset-success');
+    errEl.classList.remove('show');
+    sucEl.classList.remove('show');
+    const password = document.getElementById('reset-password').value;
+    const confirm = document.getElementById('reset-confirm').value;
+    if (password !== confirm) {
+        errEl.textContent = 'Passwords do not match';
+        errEl.classList.add('show');
+        return;
+    }
+    const token = window.location.hash.replace('#reset=', '');
+    const btn = document.getElementById('reset-btn');
+    btn.textContent = 'Resetting...';
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, newPassword: password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Reset failed');
+        sucEl.textContent = 'Password reset successfully! Redirecting to login...';
+        sucEl.classList.add('show');
+        setTimeout(() => { window.location.hash = ''; showLogin(); }, 2000);
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.add('show');
+    } finally {
+        btn.textContent = 'Reset password';
+        btn.disabled = false;
+    }
+}
+
+// Check for reset token in hash on page load
+(function checkResetHash() {
+    const hash = window.location.hash;
+    if (hash.startsWith('#reset=') && hash.length > 7) {
+        showReset();
+    }
+})();
 
 async function handleRegister(e) {
     e.preventDefault();

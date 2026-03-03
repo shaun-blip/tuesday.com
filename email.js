@@ -105,4 +105,24 @@ async function sendMentionEmail(toEmail, recipientName, itemTitle, authorName, u
     } catch (e) { console.error('Email error:', e.message); }
 }
 
-module.exports = { initTransporter, sendAssignmentEmail, sendUpdateEmail, sendMentionEmail };
+async function sendPasswordResetEmail(toEmail, recipientName, resetUrl) {
+    if (!transporter) return;
+    const html = wrap('Password Reset', `
+        <p>Hi <strong>${recipientName}</strong>,</p>
+        <p>We received a request to reset your password. Click the button below to set a new password:</p>
+        <p style="text-align:center;margin:24px 0;">
+            <a href="${resetUrl}" style="${btnStyle}">Reset Password</a>
+        </p>
+        <p style="color:#676879;font-size:13px;">This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
+    `);
+    try {
+        await transporter.sendMail({
+            from: `"tuesday.com" <${process.env.GMAIL_USER}>`,
+            to: toEmail,
+            subject: 'Reset your tuesday.com password',
+            html
+        });
+    } catch (e) { console.error('Email error:', e.message); }
+}
+
+module.exports = { initTransporter, sendAssignmentEmail, sendUpdateEmail, sendMentionEmail, sendPasswordResetEmail };

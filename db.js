@@ -103,6 +103,14 @@ function createTables() {
             details TEXT,
             created_at INTEGER DEFAULT (CAST(strftime('%s','now') AS INTEGER)*1000)
         );
+        CREATE TABLE IF NOT EXISTS password_resets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token TEXT NOT NULL UNIQUE,
+            expires_at INTEGER NOT NULL,
+            used INTEGER DEFAULT 0,
+            created_at INTEGER DEFAULT (CAST(strftime('%s','now') AS INTEGER)*1000)
+        );
     `);
 }
 
