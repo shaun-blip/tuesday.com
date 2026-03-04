@@ -472,6 +472,12 @@ html, body { height:100%; font-family:'Figtree', -apple-system, BlinkMacSystemFo
 .admin-delete-btn:hover { background:#fef2f2; color:#dc2626; }
 .merge-select { width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius); font-size:13px; font-family:inherit; }
 
+/* Password visibility toggle */
+.password-wrapper { position:relative; }
+.password-wrapper input { padding-right:40px; }
+.password-toggle { position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:var(--text-muted); padding:4px; display:flex; align-items:center; }
+.password-toggle:hover { color:var(--text); }
+
 /* Updates icon in table row */
 .updates-icon-cell { width:36px; text-align:center; padding:0 2px; }
 .updates-icon { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; border:none; background:transparent; cursor:pointer; color:var(--text-muted); position:relative; transition:all 100ms; }

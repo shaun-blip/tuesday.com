@@ -3,6 +3,12 @@ const nodemailer = require('nodemailer');
 
 let transporter = null;
 
+// Escape HTML to prevent injection in email templates
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function initTransporter() {
     if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
         console.log('Email notifications disabled (GMAIL_USER/GMAIL_APP_PASSWORD not set)');
@@ -46,9 +52,9 @@ function wrap(title, body) {
 async function sendAssignmentEmail(toEmail, assigneeName, itemTitle, assignerName) {
     if (!transporter) return;
     const html = wrap('New Assignment', `
-        <p>Hi <strong>${assigneeName}</strong>,</p>
-        <p><strong>${assignerName}</strong> assigned you to:</p>
-        <h3 style="color:#0073ea;margin:16px 0;">${itemTitle}</h3>
+        <p>Hi <strong>${escHtml(assigneeName)}</strong>,</p>
+        <p><strong>${escHtml(assignerName)}</strong> assigned you to:</p>
+        <h3 style="color:#0073ea;margin:16px 0;">${escHtml(itemTitle)}</h3>
         <p>Log in to view and manage this item.</p>
     `);
     try {
@@ -63,13 +69,13 @@ async function sendAssignmentEmail(toEmail, assigneeName, itemTitle, assignerNam
 
 async function sendUpdateEmail(toEmail, recipientName, itemTitle, authorName, updateText) {
     if (!transporter) return;
-    const preview = updateText.length > 200 ? updateText.substring(0, 200) + '...' : updateText;
+    const rawPreview = updateText.length > 200 ? updateText.substring(0, 200) + '...' : updateText;
     const html = wrap('New Update', `
-        <p>Hi <strong>${recipientName}</strong>,</p>
-        <p><strong>${authorName}</strong> posted an update on:</p>
-        <h3 style="color:#0073ea;margin:16px 0;">${itemTitle}</h3>
+        <p>Hi <strong>${escHtml(recipientName)}</strong>,</p>
+        <p><strong>${escHtml(authorName)}</strong> posted an update on:</p>
+        <h3 style="color:#0073ea;margin:16px 0;">${escHtml(itemTitle)}</h3>
         <div style="background:#f6f7fb;padding:12px 16px;border-radius:4px;border-left:3px solid #0073ea;margin:16px 0;">
-            ${preview}
+            ${escHtml(rawPreview)}
         </div>
         <p>Log in to see the full update and reply.</p>
     `);
@@ -85,13 +91,13 @@ async function sendUpdateEmail(toEmail, recipientName, itemTitle, authorName, up
 
 async function sendMentionEmail(toEmail, recipientName, itemTitle, authorName, updateText) {
     if (!transporter) return;
-    const preview = updateText.length > 200 ? updateText.substring(0, 200) + '...' : updateText;
+    const rawPreview = updateText.length > 200 ? updateText.substring(0, 200) + '...' : updateText;
     const html = wrap('You Were Mentioned', `
-        <p>Hi <strong>${recipientName}</strong>,</p>
-        <p><strong>${authorName}</strong> mentioned you in an update on:</p>
-        <h3 style="color:#0073ea;margin:16px 0;">${itemTitle}</h3>
+        <p>Hi <strong>${escHtml(recipientName)}</strong>,</p>
+        <p><strong>${escHtml(authorName)}</strong> mentioned you in an update on:</p>
+        <h3 style="color:#0073ea;margin:16px 0;">${escHtml(itemTitle)}</h3>
         <div style="background:#f6f7fb;padding:12px 16px;border-radius:4px;border-left:3px solid #ff158a;margin:16px 0;">
-            ${preview}
+            ${escHtml(rawPreview)}
         </div>
         <p>Log in to see the full update and reply.</p>
     `);
@@ -108,7 +114,7 @@ async function sendMentionEmail(toEmail, recipientName, itemTitle, authorName, u
 async function sendPasswordResetEmail(toEmail, recipientName, resetUrl) {
     if (!transporter) return;
     const html = wrap('Password Reset', `
-        <p>Hi <strong>${recipientName}</strong>,</p>
+        <p>Hi <strong>${escHtml(recipientName)}</strong>,</p>
         <p>We received a request to reset your password. Click the button below to set a new password:</p>
         <p style="text-align:center;margin:24px 0;">
             <a href="${resetUrl}" style="${btnStyle}">Reset Password</a>
