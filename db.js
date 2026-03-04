@@ -5,8 +5,10 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
-const DATA_DIR = path.join(__dirname, 'data');
+// Use /data (Render persistent disk) if it exists, otherwise ./data for local dev
+const DATA_DIR = process.env.DATA_DIR || (fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data'));
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+console.log(`Database directory: ${DATA_DIR}`);
 
 const db = new Database(path.join(DATA_DIR, 'tuesday.db'));
 db.pragma('journal_mode = WAL');

@@ -583,7 +583,7 @@ function formatTimestamp(ts) {
 function navigateTo(page) {
     currentPage = page;
     // Show/hide page containers
-    const pages = ['home', 'board', 'my-work'];
+    const pages = ['home', 'board', 'my-work', 'admin'];
     pages.forEach(p => {
         const el = $('#page-' + p);
         if (el) el.style.display = p === page ? '' : 'none';
@@ -595,6 +595,7 @@ function navigateTo(page) {
     const titleEl = $('#board-title');
     if (page === 'home') titleEl.textContent = 'Home';
     else if (page === 'my-work') titleEl.textContent = 'My Work';
+    else if (page === 'admin') titleEl.textContent = 'Members';
     else titleEl.textContent = state.boardName || 'Beau Bottles Workflow';
     // Update sidebar active state
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -604,6 +605,7 @@ function navigateTo(page) {
     // Render page content
     if (page === 'home') renderDashboard();
     else if (page === 'my-work') renderMyWork();
+    else if (page === 'admin') renderAdmin();
     else renderTable();
 }
 
@@ -1390,6 +1392,36 @@ async function init() {
         btn.addEventListener('click', () => executeBulkAction(btn.dataset.action));
     });
 
+    // ===== Admin / Members =====
+    const mergeModal = $('#merge-modal');
+    const mergeKeep = $('#merge-keep');
+    const mergeRemove = $('#merge-remove');
+    const mergeError = $('#merge-error');
+
+    $('#close-merge-modal').addEventListener('click', () => mergeModal.classList.remove('open'));
+    $('#cancel-merge-modal').addEventListener('click', () => mergeModal.classList.remove('open'));
+    mergeModal.addEventListener('click', e => { if (e.target === mergeModal) mergeModal.classList.remove('open'); });
+
+    $('#confirm-merge-btn').addEventListener('click', async () => {
+        const keepId = mergeKeep.value;
+        const removeId = mergeRemove.value;
+        mergeError.style.display = 'none';
+        if (!keepId || !removeId) { mergeError.textContent = 'Select both accounts'; mergeError.style.display = 'block'; return; }
+        if (keepId === removeId) { mergeError.textContent = 'Cannot merge an account with itself'; mergeError.style.display = 'block'; return; }
+        const removeOption = mergeRemove.querySelector(`option[value="${removeId}"]`);
+        const removeName = removeOption ? removeOption.textContent : removeId;
+        if (!confirm(`Are you sure you want to merge and remove "${removeName}"? This cannot be undone.`)) return;
+        try {
+            await api('POST', '/api/admin/merge-users', { keepId, removeId });
+            mergeModal.classList.remove('open');
+            await fetchBoard();
+            renderAdmin();
+        } catch (err) {
+            mergeError.textContent = err.message;
+            mergeError.style.display = 'block';
+        }
+    });
+
     // ===== Init: Fetch Board + Set Page =====
     await fetchBoard();
     // Start notification polling
@@ -1397,6 +1429,72 @@ async function init() {
     notifPollTimer = setInterval(pollNotifications, 30000);
     // Handle initial hash
     handleHash();
+}
+
+// ===== Admin Page Rendering =====
+async function renderAdmin() {
+    const container = $('#admin-users-list');
+    if (!container) return;
+    try {
+        const users = await api('GET', '/api/admin/users');
+        container.innerHTML = `
+            <div class="admin-toolbar">
+                <button class="btn-save" id="open-merge-btn" style="font-size:13px;padding:6px 16px;">Merge Accounts</button>
+            </div>
+            <table class="admin-table">
+                <thead><tr>
+                    <th></th><th>Name</th><th>Email</th><th>Items</th><th>Updates</th><th>Joined</th><th></th>
+                </tr></thead>
+                <tbody>
+                ${users.map(u => {
+                    const d = u.created_at ? new Date(u.created_at) : null;
+                    const dateStr = d ? d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '—';
+                    return `<tr>
+                        <td><span class="avatar" style="background:${u.color};width:30px;height:30px;font-size:11px;">${esc(u.initials)}</span></td>
+                        <td><strong>${esc(u.name)}</strong></td>
+                        <td>${esc(u.email)}</td>
+                        <td>${u.assigned_items}</td>
+                        <td>${u.updates_count}</td>
+                        <td>${dateStr}</td>
+                        <td><button class="admin-delete-btn" data-uid="${u.id}" data-uname="${esc(u.name)}" title="Delete user">&times;</button></td>
+                    </tr>`;
+                }).join('')}
+                </tbody>
+            </table>
+        `;
+
+        // Open merge modal
+        const openMergeBtn = $('#open-merge-btn');
+        if (openMergeBtn) {
+            openMergeBtn.addEventListener('click', () => {
+                const mergeKeep = $('#merge-keep');
+                const mergeRemove = $('#merge-remove');
+                const mergeError = $('#merge-error');
+                mergeError.style.display = 'none';
+                const opts = users.map(u => `<option value="${u.id}">${esc(u.name)} (${esc(u.email)})</option>`).join('');
+                mergeKeep.innerHTML = '<option value="">Select account to keep...</option>' + opts;
+                mergeRemove.innerHTML = '<option value="">Select account to remove...</option>' + opts;
+                const mergeModal = $('#merge-modal');
+                mergeModal.classList.add('open');
+            });
+        }
+
+        // Delete user buttons
+        container.querySelectorAll('.admin-delete-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const uid = btn.dataset.uid;
+                const uname = btn.dataset.uname;
+                if (!confirm(`Are you sure you want to delete "${uname}"? This cannot be undone.`)) return;
+                try {
+                    await api('DELETE', '/api/admin/users/' + uid);
+                    await fetchBoard();
+                    renderAdmin();
+                } catch (err) { alert(err.message); }
+            });
+        });
+    } catch (err) {
+        container.innerHTML = `<p style="color:#dc2626;">Error loading users: ${esc(err.message)}</p>`;
+    }
 }
 
 init();

@@ -498,6 +498,83 @@ function notifyStatusChange(actorId, itemId, itemTitle, newStatus) {
     }
 }
 
+// ===== Admin Routes =====
+app.get('/api/admin/users', auth, (req, res) => {
+    try {
+        const users = db.prepare(`
+            SELECT u.id, u.email, u.name, u.initials, u.color, u.created_at,
+                   (SELECT COUNT(*) FROM item_persons WHERE user_id = u.id) AS assigned_items,
+                   (SELECT COUNT(*) FROM updates_ WHERE author_id = u.id) AS updates_count
+            FROM users u ORDER BY u.created_at
+        `).all();
+        res.json(users);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/merge-users', auth, (req, res) => {
+    try {
+        const { keepId, removeId } = req.body;
+        if (!keepId || !removeId) return res.status(400).json({ error: 'keepId and removeId required' });
+        if (keepId === removeId) return res.status(400).json({ error: 'Cannot merge a user with themselves' });
+
+        const keepUser = db.prepare('SELECT * FROM users WHERE id = ?').get(keepId);
+        const removeUser = db.prepare('SELECT * FROM users WHERE id = ?').get(removeId);
+        if (!keepUser) return res.status(404).json({ error: 'Keep user not found' });
+        if (!removeUser) return res.status(404).json({ error: 'Remove user not found' });
+
+        const merge = db.transaction(() => {
+            // Reassign item_persons (skip duplicates)
+            const existingItemAssignments = db.prepare('SELECT item_id FROM item_persons WHERE user_id = ?').all(keepId).map(r => r.item_id);
+            const toReassignItems = db.prepare('SELECT item_id FROM item_persons WHERE user_id = ?').all(removeId);
+            for (const r of toReassignItems) {
+                if (!existingItemAssignments.includes(r.item_id)) {
+                    db.prepare('UPDATE item_persons SET user_id = ? WHERE item_id = ? AND user_id = ?').run(keepId, r.item_id, removeId);
+                } else {
+                    db.prepare('DELETE FROM item_persons WHERE item_id = ? AND user_id = ?').run(r.item_id, removeId);
+                }
+            }
+
+            // Reassign subitem_persons (skip duplicates)
+            const existingSubAssignments = db.prepare('SELECT subitem_id FROM subitem_persons WHERE user_id = ?').all(keepId).map(r => r.subitem_id);
+            const toReassignSubs = db.prepare('SELECT subitem_id FROM subitem_persons WHERE user_id = ?').all(removeId);
+            for (const r of toReassignSubs) {
+                if (!existingSubAssignments.includes(r.subitem_id)) {
+                    db.prepare('UPDATE subitem_persons SET user_id = ? WHERE subitem_id = ? AND user_id = ?').run(keepId, r.subitem_id, removeId);
+                } else {
+                    db.prepare('DELETE FROM subitem_persons WHERE subitem_id = ? AND user_id = ?').run(r.subitem_id, removeId);
+                }
+            }
+
+            // Reassign updates, items created_by, subitems created_by, attachments, notifications, activity
+            db.prepare('UPDATE updates_ SET author_id = ? WHERE author_id = ?').run(keepId, removeId);
+            db.prepare('UPDATE items SET created_by = ? WHERE created_by = ?').run(keepId, removeId);
+            db.prepare('UPDATE subitems SET created_by = ? WHERE created_by = ?').run(keepId, removeId);
+            db.prepare('UPDATE attachments SET uploaded_by = ? WHERE uploaded_by = ?').run(keepId, removeId);
+            db.prepare('UPDATE notifications SET user_id = ? WHERE user_id = ?').run(keepId, removeId);
+            db.prepare('UPDATE activity_log SET user_id = ? WHERE user_id = ?').run(keepId, removeId);
+            db.prepare('UPDATE password_resets SET user_id = ? WHERE user_id = ?').run(keepId, removeId);
+
+            // Delete the duplicate user
+            db.prepare('DELETE FROM users WHERE id = ?').run(removeId);
+        });
+        merge();
+
+        logActivity(req.userId, 'merged_users', null, null, `Merged "${removeUser.name}" (${removeUser.email}) into "${keepUser.name}" (${keepUser.email})`);
+        res.json({ ok: true, message: `Merged ${removeUser.name} into ${keepUser.name}` });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/users/:id', auth, (req, res) => {
+    try {
+        const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.params.id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (req.params.id === req.userId) return res.status(400).json({ error: 'Cannot delete yourself' });
+        db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+        logActivity(req.userId, 'deleted_user', null, null, `Deleted user "${user.name}" (${user.email})`);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== Fallback: serve index.html for SPA =====
 app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });

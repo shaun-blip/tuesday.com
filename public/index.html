@@ -44,6 +44,10 @@
                 <div id="board-list" class="board-list">
                     <!-- Rendered by JS -->
                 </div>
+                <a class="nav-item" href="#admin" id="nav-admin">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Members
+                </a>
             </nav>
             <div class="sidebar-user" id="sidebar-user">
                 <span class="avatar sidebar-avatar" id="sidebar-avatar"></span>
@@ -108,6 +112,43 @@
                     <h2 class="my-work-title">My Work</h2>
                     <p class="my-work-subtitle">Items assigned to you</p>
                     <div id="my-work-content"></div>
+                </div>
+            </div>
+
+            <!-- Admin/Members Page -->
+            <div id="page-admin" class="page-container" style="display:none;">
+                <div class="my-work">
+                    <h2 class="my-work-title">Team Members</h2>
+                    <p class="my-work-subtitle">Manage your team accounts</p>
+                    <div id="admin-users-list"></div>
+                </div>
+            </div>
+
+            <!-- Merge Users Modal -->
+            <div class="modal-overlay" id="merge-modal">
+                <div class="modal modal-sm">
+                    <div class="modal-header">
+                        <h2>Merge Accounts</h2>
+                        <button class="modal-close" id="close-merge-modal">&times;</button>
+                    </div>
+                    <div style="padding:0 24px 8px;">
+                        <p style="font-size:13px;color:#676879;margin:0 0 16px;">All items, comments, and assignments from the removed account will be transferred to the kept account.</p>
+                        <div class="form-group">
+                            <label>Keep this account</label>
+                            <select id="merge-keep" class="merge-select"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Remove this account (merge into above)</label>
+                            <select id="merge-remove" class="merge-select"></select>
+                        </div>
+                        <div class="error-msg" id="merge-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px;"></div>
+                    </div>
+                    <div class="modal-actions">
+                        <div class="modal-actions-right">
+                            <button type="button" class="btn-cancel" id="cancel-merge-modal">Cancel</button>
+                            <button type="button" class="btn-delete" id="confirm-merge-btn">Merge Accounts</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
