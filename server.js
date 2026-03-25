@@ -104,7 +104,7 @@ app.post('/api/auth/forgot-password', (req, res) => {
           .run(uuidv4(), user.id, token, expiresAt);
         // Send reset email (non-blocking)
         const resetUrl = `${req.protocol}://${req.get('host')}/login.html#reset=${token}`;
-        sendPasswordResetEmail(user.email, user.name, resetUrl).catch(() => {});
+        sendPasswordResetEmail(user.email, user.name, resetUrl).catch(e => console.error('Email send failed:', e.message));
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -451,7 +451,7 @@ function notifyAssignment(actorId, newPersonIds, itemId, itemTitle) {
         const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(pid);
         if (!user) continue;
         createNotification(pid, 'assigned', itemId, itemTitle, actor.name, `${actor.name} assigned you to "${itemTitle}"`);
-        sendAssignmentEmail(user.email, user.name, itemTitle, actor.name).catch(() => {});
+        sendAssignmentEmail(user.email, user.name, itemTitle, actor.name).catch(e => console.error('Email send failed:', e.message));
     }
 }
 
@@ -480,7 +480,7 @@ function notifyUpdate(actorId, parentId, parentType, itemTitle, text) {
         const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(pid);
         if (!user) continue;
         createNotification(pid, 'update', parentId, itemTitle, actor.name, `${actor.name} posted an update on "${itemTitle}"`);
-        sendUpdateEmail(user.email, user.name, itemTitle, actor.name, text).catch(() => {});
+        sendUpdateEmail(user.email, user.name, itemTitle, actor.name, text).catch(e => console.error('Email send failed:', e.message));
     }
 
     // Notify @mentioned users (who weren't already notified)
@@ -488,7 +488,7 @@ function notifyUpdate(actorId, parentId, parentType, itemTitle, text) {
         if (notified.has(u.id)) continue;
         notified.add(u.id);
         createNotification(u.id, 'mention', parentId, itemTitle, actor.name, `${actor.name} mentioned you on "${itemTitle}"`);
-        sendMentionEmail(u.email, u.name, itemTitle, actor.name, text).catch(() => {});
+        sendMentionEmail(u.email, u.name, itemTitle, actor.name, text).catch(e => console.error('Email send failed:', e.message));
     }
 }
 

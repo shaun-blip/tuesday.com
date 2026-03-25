@@ -18,7 +18,16 @@ function initTransporter() {
         service: 'gmail',
         auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD }
     });
-    console.log('Email notifications enabled via Gmail');
+    // Verify credentials on startup
+    transporter.verify((err, success) => {
+        if (err) {
+            console.error('Email transporter verification FAILED:', err.message);
+            console.error('Emails will NOT be sent. Check GMAIL_USER and GMAIL_APP_PASSWORD.');
+            transporter = null;
+        } else {
+            console.log('Email notifications enabled and verified via Gmail (' + process.env.GMAIL_USER + ')');
+        }
+    });
 }
 
 const baseStyle = `
@@ -50,7 +59,7 @@ function wrap(title, body) {
 }
 
 async function sendAssignmentEmail(toEmail, assigneeName, itemTitle, assignerName) {
-    if (!transporter) return;
+    if (!transporter) { console.warn('Email skipped (no transporter): assignment to', toEmail); return; }
     const html = wrap('New Assignment', `
         <p>Hi <strong>${escHtml(assigneeName)}</strong>,</p>
         <p><strong>${escHtml(assignerName)}</strong> assigned you to:</p>
@@ -64,11 +73,12 @@ async function sendAssignmentEmail(toEmail, assigneeName, itemTitle, assignerNam
             subject: `You've been assigned to "${itemTitle}"`,
             html
         });
-    } catch (e) { console.error('Email error:', e.message); }
+        console.log('Email sent: assignment to', toEmail);
+    } catch (e) { console.error('Email error (assignment to ' + toEmail + '):', e.message); }
 }
 
 async function sendUpdateEmail(toEmail, recipientName, itemTitle, authorName, updateText) {
-    if (!transporter) return;
+    if (!transporter) { console.warn('Email skipped (no transporter): update to', toEmail); return; }
     const rawPreview = updateText.length > 200 ? updateText.substring(0, 200) + '...' : updateText;
     const html = wrap('New Update', `
         <p>Hi <strong>${escHtml(recipientName)}</strong>,</p>
@@ -86,11 +96,12 @@ async function sendUpdateEmail(toEmail, recipientName, itemTitle, authorName, up
             subject: `${authorName} posted on "${itemTitle}"`,
             html
         });
-    } catch (e) { console.error('Email error:', e.message); }
+        console.log('Email sent: update to', toEmail);
+    } catch (e) { console.error('Email error (update to ' + toEmail + '):', e.message); }
 }
 
 async function sendMentionEmail(toEmail, recipientName, itemTitle, authorName, updateText) {
-    if (!transporter) return;
+    if (!transporter) { console.warn('Email skipped (no transporter): mention to', toEmail); return; }
     const rawPreview = updateText.length > 200 ? updateText.substring(0, 200) + '...' : updateText;
     const html = wrap('You Were Mentioned', `
         <p>Hi <strong>${escHtml(recipientName)}</strong>,</p>
@@ -108,11 +119,12 @@ async function sendMentionEmail(toEmail, recipientName, itemTitle, authorName, u
             subject: `${authorName} mentioned you on "${itemTitle}"`,
             html
         });
-    } catch (e) { console.error('Email error:', e.message); }
+        console.log('Email sent: mention to', toEmail);
+    } catch (e) { console.error('Email error (mention to ' + toEmail + '):', e.message); }
 }
 
 async function sendPasswordResetEmail(toEmail, recipientName, resetUrl) {
-    if (!transporter) return;
+    if (!transporter) { console.warn('Email skipped (no transporter): password reset to', toEmail); return; }
     const html = wrap('Password Reset', `
         <p>Hi <strong>${escHtml(recipientName)}</strong>,</p>
         <p>We received a request to reset your password. Click the button below to set a new password:</p>
