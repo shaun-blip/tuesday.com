@@ -307,6 +307,7 @@ app.post('/api/items/:id/subitems', auth, (req, res) => {
         if (persons && persons.length) {
             const stmt = db.prepare('INSERT INTO subitem_persons (subitem_id, user_id) VALUES (?,?)');
             for (const p of persons) stmt.run(id, p);
+            notifyAssignment(req.userId, persons, id, title);
         }
         const parentTitle = db.prepare('SELECT title FROM items WHERE id = ?').get(parentId)?.title || '';
         logActivity(req.userId, 'created_subitem', parentId, parentTitle, `Created subitem: ${title}`);
@@ -322,9 +323,12 @@ app.put('/api/subitems/:id', auth, (req, res) => {
         db.prepare('UPDATE subitems SET title=?, status=?, priority=?, date=? WHERE id=?')
           .run(title ?? sub.title, status ?? sub.status, priority ?? sub.priority, date ?? sub.date, req.params.id);
         if (persons !== undefined) {
+            const oldPersons = db.prepare('SELECT user_id FROM subitem_persons WHERE subitem_id = ?').all(req.params.id).map(r => r.user_id);
             db.prepare('DELETE FROM subitem_persons WHERE subitem_id = ?').run(req.params.id);
             const stmt = db.prepare('INSERT INTO subitem_persons (subitem_id, user_id) VALUES (?,?)');
             for (const p of persons) stmt.run(req.params.id, p);
+            const newlyAssigned = persons.filter(p => !oldPersons.includes(p));
+            if (newlyAssigned.length) notifyAssignment(req.userId, newlyAssigned, req.params.id, title || sub.title);
         }
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
