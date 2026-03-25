@@ -384,6 +384,7 @@ app.post('/api/subitems/:id/updates', auth, (req, res) => {
         const sub = db.prepare('SELECT parent_id, title FROM subitems WHERE id = ?').get(req.params.id);
         if (sub) {
             logActivity(req.userId, 'posted_update', sub.parent_id, sub.title, text.substring(0, 100));
+            notifyUpdate(req.userId, req.params.id, 'subitem', sub.title, text);
         }
         res.json({ id, author: req.userId, text, timestamp: now });
     } catch (e) { res.status(500).json({ error: e.message }); }

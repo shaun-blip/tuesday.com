@@ -422,6 +422,23 @@
         </div>
     </div>
 
+    <!-- File Preview Modal -->
+    <div class="modal-overlay" id="file-preview-modal">
+        <div class="modal" style="max-width:800px;width:90vw;max-height:90vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h2 id="file-preview-title">File Preview</h2>
+                <button class="modal-close" id="close-file-preview">&times;</button>
+            </div>
+            <div id="file-preview-content" style="flex:1;overflow:auto;padding:24px;display:flex;align-items:center;justify-content:center;min-height:200px;"></div>
+            <div class="modal-actions" style="padding:16px 24px;border-top:1px solid var(--border);">
+                <div class="modal-actions-right">
+                    <button class="btn-cancel" id="file-preview-close-btn">Close</button>
+                    <button class="btn-save" id="file-preview-download">Download</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Change Password Modal -->
     <div class="modal-overlay" id="password-modal">
         <div class="modal modal-sm">

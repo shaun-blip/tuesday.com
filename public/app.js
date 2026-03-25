@@ -89,6 +89,10 @@ const confirmCancel = $('#confirm-cancel');
 
 const inlinePopup = $('#inline-popup');
 const updatesPanel = $('#updates-panel');
+const filePreviewModal = $('#file-preview-modal');
+const filePreviewTitle = $('#file-preview-title');
+const filePreviewContent = $('#file-preview-content');
+const filePreviewDownload = $('#file-preview-download');
 
 let pendingAttachments = [];
 let originalAttachmentIds = [];
@@ -289,10 +293,14 @@ function showInlinePopup(cellEl, contentEl) {
     else { inlinePopup.appendChild(contentEl); }
     inlinePopup.classList.add('open');
     const rect = cellEl.getBoundingClientRect();
-    let top = rect.bottom + 2;
-    let left = rect.left;
-    if (left + 180 > window.innerWidth) left = window.innerWidth - 190;
-    if (top + 300 > window.innerHeight) top = rect.top - 300;
+    const popupRect = inlinePopup.getBoundingClientRect();
+    const popupWidth = popupRect.width || 220;
+    const popupHeight = popupRect.height || 200;
+    let top = rect.bottom + 4;
+    let left = rect.left + (rect.width / 2) - (popupWidth / 2);
+    if (left + popupWidth > window.innerWidth - 16) left = window.innerWidth - popupWidth - 16;
+    if (left < 16) left = 16;
+    if (top + popupHeight > window.innerHeight - 16) top = rect.top - popupHeight - 4;
     inlinePopup.style.left = left + 'px';
     inlinePopup.style.top = top + 'px';
 }
@@ -352,8 +360,12 @@ function openFilesPicker(cellEl, itemId, parentId) {
         item.attachments.forEach(att => {
             const row = document.createElement('div');
             row.className = 'attachment-item';
-            row.innerHTML = `<span class="file-name">${esc(att.name)}</span><span class="file-size">${formatSize(att.size)}</span><button class="remove-att">&times;</button>`;
-            row.querySelector('.remove-att').addEventListener('click', async (e) => { e.stopPropagation(); await api('DELETE', '/api/attachments/' + att.id); closeInlinePopup(); await fetchBoard(); });
+            row.innerHTML = `<span class="file-name" style="cursor:pointer;text-decoration:underline;">${esc(att.name)}</span><span class="file-size">${formatSize(att.size)}</span><button class="remove-att" title="Delete file">&times;</button>`;
+            row.querySelector('.file-name').addEventListener('click', (e) => { e.stopPropagation(); closeInlinePopup(); openFilePreview(att); });
+            row.querySelector('.remove-att').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showConfirm('Are you sure you want to delete "' + att.name + '"?', async () => { await api('DELETE', '/api/attachments/' + att.id); closeInlinePopup(); await fetchBoard(); });
+            });
             container.appendChild(row);
         });
     }
@@ -1151,8 +1163,8 @@ function renderAttachments() {
         const el = document.createElement('div');
         el.className = 'attachment-item';
         el.innerHTML = `<span class="file-name" title="${esc(att.name)}">${esc(att.name)}</span><span class="file-size">${formatSize(att.size)}</span><button class="remove-att" title="Remove">&times;</button>`;
-        el.querySelector('.file-name').addEventListener('click', () => { if (att.data) { const a=document.createElement('a'); a.href=att.data; a.download=att.name; a.click(); } });
-        el.querySelector('.remove-att').addEventListener('click', () => { pendingAttachments.splice(i,1); renderAttachments(); });
+        el.querySelector('.file-name').addEventListener('click', () => { openFilePreview(att); });
+        el.querySelector('.remove-att').addEventListener('click', () => { showConfirm('Are you sure you want to delete "' + att.name + '"?', () => { pendingAttachments.splice(i,1); renderAttachments(); }); });
         attachmentList.appendChild(el);
     });
 }
@@ -1198,6 +1210,82 @@ function closeGroupModal() { groupModal.classList.remove('open'); }
 // ===== Confirm Modal =====
 function showConfirm(msg, cb) { confirmMessage.textContent = msg; confirmCallback = cb; confirmModal.classList.add('open'); }
 function closeConfirm() { confirmModal.classList.remove('open'); confirmCallback = null; }
+
+// ===== File Preview =====
+let currentPreviewFile = null;
+
+function openFilePreview(att) {
+    currentPreviewFile = att;
+    filePreviewTitle.textContent = att.name;
+    filePreviewContent.innerHTML = '';
+
+    const mimeType = att.type || '';
+    const ext = att.name.split('.').pop().toLowerCase();
+    const hasData = !!att.data;
+
+    filePreviewDownload.disabled = !hasData;
+    filePreviewDownload.style.opacity = hasData ? '1' : '0.5';
+
+    if (!hasData) {
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'text-align:center;padding:40px 20px;';
+        const icon = document.createElement('div');
+        icon.style.cssText = 'font-size:48px;margin-bottom:16px;';
+        icon.textContent = ext === 'pdf' ? '\uD83D\uDCC4' : ext === 'doc' || ext === 'docx' ? '\uD83D\uDCC4' : ext === 'xls' || ext === 'xlsx' ? '\uD83D\uDCCA' : '\uD83D\uDCC1';
+        const label = document.createElement('p');
+        label.style.cssText = 'color:var(--text-muted);font-size:14px;margin:0;';
+        label.textContent = 'File data is not available for preview or download.';
+        const info = document.createElement('p');
+        info.style.cssText = 'color:var(--text-muted);font-size:12px;margin-top:8px;';
+        info.textContent = `${att.name} (${formatSize(att.size)})`;
+        wrapper.appendChild(icon);
+        wrapper.appendChild(label);
+        wrapper.appendChild(info);
+        filePreviewContent.appendChild(wrapper);
+    } else if (mimeType.startsWith('image/') || ['png','jpg','jpeg','gif','svg','webp','bmp'].includes(ext)) {
+        const img = document.createElement('img');
+        img.src = att.data;
+        img.style.cssText = 'max-width:100%;max-height:60vh;object-fit:contain;border-radius:4px;';
+        filePreviewContent.appendChild(img);
+    } else if (mimeType === 'application/pdf' || ext === 'pdf') {
+        const iframe = document.createElement('iframe');
+        iframe.src = att.data;
+        iframe.style.cssText = 'width:100%;height:60vh;border:none;border-radius:4px;';
+        filePreviewContent.appendChild(iframe);
+    } else {
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'text-align:center;padding:40px 20px;';
+        const icon = document.createElement('div');
+        icon.style.cssText = 'font-size:48px;margin-bottom:16px;';
+        icon.textContent = ext === 'doc' || ext === 'docx' ? '\uD83D\uDCC4' : ext === 'xls' || ext === 'xlsx' ? '\uD83D\uDCCA' : '\uD83D\uDCC1';
+        const label = document.createElement('p');
+        label.style.cssText = 'color:var(--text-muted);font-size:14px;margin:0;';
+        label.textContent = 'Preview not available for this file type. Click Download to open.';
+        const info = document.createElement('p');
+        info.style.cssText = 'color:var(--text-muted);font-size:12px;margin-top:8px;';
+        info.textContent = `${att.name} (${formatSize(att.size)})`;
+        wrapper.appendChild(icon);
+        wrapper.appendChild(label);
+        wrapper.appendChild(info);
+        filePreviewContent.appendChild(wrapper);
+    }
+
+    filePreviewModal.classList.add('open');
+}
+
+function closeFilePreview() {
+    filePreviewModal.classList.remove('open');
+    filePreviewContent.innerHTML = '';
+    currentPreviewFile = null;
+}
+
+function downloadCurrentPreview() {
+    if (!currentPreviewFile || !currentPreviewFile.data) return;
+    const a = document.createElement('a');
+    a.href = currentPreviewFile.data;
+    a.download = currentPreviewFile.name;
+    a.click();
+}
 
 // ===== Color Picker =====
 function setActiveColor(sel, color) { $$(sel+' .color-swatch').forEach(s => s.classList.toggle('active', s.dataset.color === color)); }
@@ -1281,6 +1369,12 @@ async function init() {
     // Confirm
     confirmOk.addEventListener('click', () => { if(confirmCallback) confirmCallback(); closeConfirm(); });
     confirmCancel.addEventListener('click', closeConfirm);
+
+    // File preview
+    $('#close-file-preview').addEventListener('click', closeFilePreview);
+    $('#file-preview-close-btn').addEventListener('click', closeFilePreview);
+    filePreviewDownload.addEventListener('click', downloadCurrentPreview);
+    filePreviewModal.addEventListener('click', (e) => { if (e.target === filePreviewModal) closeFilePreview(); });
 
     // Color pickers
     $$('.color-picker .color-swatch').forEach(sw => {
