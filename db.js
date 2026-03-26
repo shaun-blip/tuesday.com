@@ -83,6 +83,7 @@ function createTables() {
             parent_id TEXT NOT NULL,
             author_id TEXT NOT NULL REFERENCES users(id),
             text TEXT NOT NULL,
+            reply_to TEXT DEFAULT NULL,
             created_at INTEGER DEFAULT (CAST(strftime('%s','now') AS INTEGER)*1000)
         );
         CREATE TABLE IF NOT EXISTS notifications (
@@ -272,7 +273,7 @@ function getBoard() {
     const allSubitems = db.prepare(`SELECT id, parent_id, title, status, priority, date, position FROM subitems ORDER BY position`).all();
     const allSubitemPersons = db.prepare(`SELECT subitem_id, user_id FROM subitem_persons`).all();
     const allAttachments = db.prepare(`SELECT id, parent_type, parent_id, name, size, type, data FROM attachments`).all();
-    const allUpdates = db.prepare(`SELECT id, parent_type, parent_id, author_id AS author, text, created_at AS timestamp FROM updates_ ORDER BY created_at`).all();
+    const allUpdates = db.prepare(`SELECT id, parent_type, parent_id, author_id AS author, text, reply_to AS replyTo, created_at AS timestamp FROM updates_ ORDER BY created_at`).all();
 
     // Index by parent
     const personsByItem = {};
@@ -293,7 +294,7 @@ function getBoard() {
     const updatesByParent = {};
     allUpdates.forEach(u => {
         const key = u.parent_type + ':' + u.parent_id;
-        (updatesByParent[key] = updatesByParent[key] || []).push({ id: u.id, author: u.author, text: u.text, timestamp: u.timestamp });
+        (updatesByParent[key] = updatesByParent[key] || []).push({ id: u.id, author: u.author, text: u.text, replyTo: u.replyTo || null, timestamp: u.timestamp });
     });
 
     // Assemble items
@@ -383,6 +384,15 @@ function runMigrations() {
         if (!cols.includes('parent_type')) {
             db.exec("ALTER TABLE notifications ADD COLUMN parent_type TEXT DEFAULT 'item'");
             console.log('Migration: added parent_type to notifications');
+        }
+    } catch (e) { console.log('Migration check:', e.message); }
+
+    // Add reply_to column to updates_ if it doesn't exist
+    try {
+        const updCols = db.prepare("PRAGMA table_info(updates_)").all().map(c => c.name);
+        if (!updCols.includes('reply_to')) {
+            db.exec("ALTER TABLE updates_ ADD COLUMN reply_to TEXT DEFAULT NULL");
+            console.log('Migration: added reply_to to updates_');
         }
     } catch (e) { console.log('Migration check:', e.message); }
 }

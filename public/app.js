@@ -99,6 +99,8 @@ let originalAttachmentIds = [];
 let confirmCallback = null;
 let currentUpdatesItemId = null;
 let currentUpdatesParentId = null;
+let currentReplyToId = null;
+let currentReplyToAuthor = null;
 
 // ===== Status & Priority Config =====
 const STATUS_CONFIG = {
@@ -417,65 +419,124 @@ function openUpdatesPanel(itemId, parentId) {
     $('#updates-text').value = '';
 }
 
-function closeUpdatesPanel() { updatesPanel.classList.remove('open'); currentUpdatesItemId = null; currentUpdatesParentId = null; }
+function closeUpdatesPanel() { updatesPanel.classList.remove('open'); currentUpdatesItemId = null; currentUpdatesParentId = null; clearReplyTo(); }
 
 function renderUpdatesBody(item) {
     const body = $('#updates-panel-body');
     body.innerHTML = '';
+    clearReplyTo();
     if (!item.updates || item.updates.length === 0) {
         body.innerHTML = `<div class="updates-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div>No updates yet</div><div style="font-size:12px;margin-top:4px;">Be the first to post an update</div></div>`;
         return;
     }
-    const sorted = [...item.updates].sort((a,b) => b.timestamp - a.timestamp);
-    sorted.forEach(upd => {
-        const member = state.members.find(m => m.id === upd.author);
-        const isOwn = currentUser && upd.author === currentUser.id;
-        const el = document.createElement('div');
-        el.className = 'update-item';
-        el.dataset.updateId = upd.id;
-        el.innerHTML = `<div class="update-header"><span class="avatar" style="background:${member?member.color:'#999'};width:28px;height:28px;font-size:11px;font-weight:600;">${member?esc(member.name):'?'}</span><span class="update-author-name">${member?esc(member.fullName):'Unknown'}</span><span class="update-timestamp">${formatTimestamp(upd.timestamp)}</span>${isOwn ? '<div class="update-actions"><button class="update-edit-btn" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="update-delete-btn" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div>' : ''}</div><div class="update-text">${highlightMentions(upd.text)}</div>`;
 
-        // Edit button handler
-        if (isOwn) {
-            el.querySelector('.update-edit-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                const textDiv = el.querySelector('.update-text');
-                const originalText = upd.text;
-                textDiv.innerHTML = `<textarea class="update-edit-textarea">${esc(originalText)}</textarea><div class="update-edit-actions"><button class="btn-cancel update-edit-cancel">Cancel</button><button class="btn-save update-edit-save">Save</button></div>`;
-                const textarea = textDiv.querySelector('textarea');
-                textarea.focus();
-                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-                textDiv.querySelector('.update-edit-cancel').addEventListener('click', () => {
-                    textDiv.innerHTML = highlightMentions(originalText);
-                });
-                textDiv.querySelector('.update-edit-save').addEventListener('click', async () => {
-                    const newText = textarea.value.trim();
-                    if (!newText) return;
-                    try {
-                        await api('PUT', '/api/updates/' + upd.id, { text: newText });
-                        await fetchBoard();
-                        const refreshedItem = currentUpdatesParentId ? findSubitem(currentUpdatesParentId, currentUpdatesItemId) : state.items.find(it => it.id === currentUpdatesItemId);
-                        if (refreshedItem) renderUpdatesBody(refreshedItem);
-                    } catch (err) { alert(err.message); }
-                });
-            });
-
-            // Delete button handler
-            el.querySelector('.update-delete-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                showConfirm('Delete this comment? This cannot be undone.', async () => {
-                    try {
-                        await api('DELETE', '/api/updates/' + upd.id);
-                        await fetchBoard();
-                        const refreshedItem = currentUpdatesParentId ? findSubitem(currentUpdatesParentId, currentUpdatesItemId) : state.items.find(it => it.id === currentUpdatesItemId);
-                        if (refreshedItem) renderUpdatesBody(refreshedItem);
-                    } catch (err) { alert(err.message); }
-                });
-            });
-        }
-
-        body.appendChild(el);
+    // Separate top-level updates and replies
+    const allUpdates = [...item.updates];
+    const topLevel = allUpdates.filter(u => !u.replyTo).sort((a,b) => b.timestamp - a.timestamp);
+    const repliesByParent = {};
+    allUpdates.filter(u => u.replyTo).forEach(u => {
+        (repliesByParent[u.replyTo] = repliesByParent[u.replyTo] || []).push(u);
     });
+    // Sort replies oldest first
+    Object.values(repliesByParent).forEach(arr => arr.sort((a,b) => a.timestamp - b.timestamp));
+
+    topLevel.forEach(upd => {
+        const el = createUpdateElement(upd, false);
+        body.appendChild(el);
+
+        // Render replies
+        const replies = repliesByParent[upd.id];
+        if (replies && replies.length > 0) {
+            const replyContainer = document.createElement('div');
+            replyContainer.className = 'reply-thread';
+            replies.forEach(reply => {
+                const replyEl = createUpdateElement(reply, true);
+                replyContainer.appendChild(replyEl);
+            });
+            body.appendChild(replyContainer);
+        }
+    });
+
+    // Also show any "orphan" replies whose parent was deleted - show them as top-level
+    const allReplyToIds = new Set(allUpdates.filter(u => u.replyTo).map(u => u.replyTo));
+    const allUpdateIds = new Set(allUpdates.map(u => u.id));
+    allUpdates.filter(u => u.replyTo && !allUpdateIds.has(u.replyTo)).sort((a,b) => b.timestamp - a.timestamp).forEach(upd => {
+        body.appendChild(createUpdateElement(upd, false));
+    });
+}
+
+function createUpdateElement(upd, isReply) {
+    const member = state.members.find(m => m.id === upd.author);
+    const isOwn = currentUser && upd.author === currentUser.id;
+    const el = document.createElement('div');
+    el.className = isReply ? 'update-item reply-item' : 'update-item';
+    el.dataset.updateId = upd.id;
+
+    const actionsHtml = isOwn
+        ? '<div class="update-actions"><button class="update-edit-btn" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="update-delete-btn" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div>'
+        : '';
+
+    const avatarSize = isReply ? 'width:24px;height:24px;font-size:10px;' : 'width:28px;height:28px;font-size:11px;';
+
+    el.innerHTML = `
+        <div class="update-header">
+            <span class="avatar" style="background:${member?member.color:'#999'};${avatarSize}font-weight:600;">${member?esc(member.name):'?'}</span>
+            <span class="update-author-name">${member?esc(member.fullName):'Unknown'}</span>
+            <span class="update-timestamp">${formatTimestamp(upd.timestamp)}</span>
+            ${actionsHtml}
+        </div>
+        <div class="update-text">${highlightMentions(upd.text)}</div>
+        <div class="update-footer">
+            <button class="update-reply-btn">Reply</button>
+        </div>`;
+
+    // Reply button
+    el.querySelector('.update-reply-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const authorName = member ? member.fullName : 'Unknown';
+        setReplyTo(upd.id, authorName);
+    });
+
+    // Edit button handler
+    if (isOwn) {
+        el.querySelector('.update-edit-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const textDiv = el.querySelector('.update-text');
+            const originalText = upd.text;
+            textDiv.innerHTML = `<textarea class="update-edit-textarea">${esc(originalText)}</textarea><div class="update-edit-actions"><button class="btn-cancel update-edit-cancel">Cancel</button><button class="btn-save update-edit-save">Save</button></div>`;
+            const textarea = textDiv.querySelector('textarea');
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            textDiv.querySelector('.update-edit-cancel').addEventListener('click', () => {
+                textDiv.innerHTML = highlightMentions(originalText);
+            });
+            textDiv.querySelector('.update-edit-save').addEventListener('click', async () => {
+                const newText = textarea.value.trim();
+                if (!newText) return;
+                try {
+                    await api('PUT', '/api/updates/' + upd.id, { text: newText });
+                    await fetchBoard();
+                    const refreshedItem = currentUpdatesParentId ? findSubitem(currentUpdatesParentId, currentUpdatesItemId) : state.items.find(it => it.id === currentUpdatesItemId);
+                    if (refreshedItem) renderUpdatesBody(refreshedItem);
+                } catch (err) { alert(err.message); }
+            });
+        });
+
+        // Delete button handler
+        el.querySelector('.update-delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            showConfirm('Delete this comment? This cannot be undone.', async () => {
+                try {
+                    await api('DELETE', '/api/updates/' + upd.id);
+                    await fetchBoard();
+                    const refreshedItem = currentUpdatesParentId ? findSubitem(currentUpdatesParentId, currentUpdatesItemId) : state.items.find(it => it.id === currentUpdatesItemId);
+                    if (refreshedItem) renderUpdatesBody(refreshedItem);
+                } catch (err) { alert(err.message); }
+            });
+        });
+    }
+
+    return el;
 }
 
 function renderAuthorSelect() {
@@ -498,12 +559,39 @@ async function postUpdate() {
     if (!text) return;
     const isSubitem = !!currentUpdatesParentId;
     const url = isSubitem ? '/api/subitems/' + currentUpdatesItemId + '/updates' : '/api/items/' + currentUpdatesItemId + '/updates';
-    await api('POST', url, { text });
+    const body = { text };
+    if (currentReplyToId) body.replyTo = currentReplyToId;
+    await api('POST', url, body);
     $('#updates-text').value = '';
+    clearReplyTo();
     await fetchBoard();
     // Re-render updates panel for same item
     const item = currentUpdatesParentId ? findSubitem(currentUpdatesParentId, currentUpdatesItemId) : state.items.find(it => it.id === currentUpdatesItemId);
     if (item) renderUpdatesBody(item);
+}
+
+function setReplyTo(updateId, authorName) {
+    currentReplyToId = updateId;
+    currentReplyToAuthor = authorName;
+    let indicator = $('#reply-indicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'reply-indicator';
+        indicator.className = 'reply-indicator';
+        const inputArea = $('.updates-panel-input');
+        inputArea.insertBefore(indicator, inputArea.querySelector('.updates-input-row'));
+    }
+    indicator.innerHTML = `<span>Replying to <strong>${esc(authorName)}</strong></span><button class="reply-cancel-btn">&times;</button>`;
+    indicator.style.display = 'flex';
+    indicator.querySelector('.reply-cancel-btn').addEventListener('click', clearReplyTo);
+    $('#updates-text').focus();
+}
+
+function clearReplyTo() {
+    currentReplyToId = null;
+    currentReplyToAuthor = null;
+    const indicator = $('#reply-indicator');
+    if (indicator) indicator.style.display = 'none';
 }
 
 // ===== @Mention Autocomplete =====
@@ -775,6 +863,27 @@ function getNotifTypeIcon(type) {
     }
 }
 
+function lookupGroupColorForItemId(itemId) {
+    // Look up group color from client-side state for an item or subitem
+    if (!itemId) return '#999';
+    const item = state.items.find(it => it.id === itemId);
+    if (item) {
+        const group = state.groups.find(g => g.id === item.groupId);
+        return group ? group.color : '#999';
+    }
+    // Check subitems
+    for (const it of state.items) {
+        if (it.subitems) {
+            const sub = it.subitems.find(s => s.id === itemId);
+            if (sub) {
+                const group = state.groups.find(g => g.id === it.groupId);
+                return group ? group.color : '#999';
+            }
+        }
+    }
+    return '#999';
+}
+
 async function renderNotifications() {
     try {
         const notifs = await api('GET', '/api/notifications');
@@ -784,7 +893,8 @@ async function renderNotifications() {
             return;
         }
         list.innerHTML = notifs.map(n => {
-            const groupColor = n.group_color || '#999';
+            // Use stored group_color, or look it up from client-side state if empty
+            const groupColor = (n.group_color && n.group_color !== '') ? n.group_color : lookupGroupColorForItemId(n.item_id);
             const typeIcon = getNotifTypeIcon(n.type);
             return `
             <div class="notif-item ${n.read ? '' : 'unread'}" data-notif-id="${n.id}" data-item-id="${n.item_id}" data-notif-type="${n.type || ''}" data-parent-type="${n.parent_type || 'item'}" style="border-left:4px solid ${groupColor};">
@@ -1733,6 +1843,60 @@ async function init() {
     notifPollTimer = setInterval(pollNotifications, 30000);
     // Render the correct page
     render();
+
+    // ===== Server-Sent Events for real-time updates =====
+    connectSSE();
+}
+
+let sseConnection = null;
+function connectSSE() {
+    const token = localStorage.getItem('tuesday_token');
+    if (!token) return;
+
+    // Use EventSource with auth via query param (SSE doesn't support headers natively)
+    // We'll use a fetch-based SSE approach instead
+    if (sseConnection) { try { sseConnection.close(); } catch(e) {} }
+
+    const evtSource = new EventSource('/api/events?token=' + encodeURIComponent(token));
+    sseConnection = evtSource;
+
+    evtSource.onmessage = async (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'connected') return;
+
+            if (data.type === 'update_posted' || data.type === 'update_edited' || data.type === 'update_deleted') {
+                // Refresh board data silently
+                await fetchBoard();
+
+                // If the updates panel is open for the affected item, re-render it
+                if (updatesPanel.classList.contains('open') && currentUpdatesItemId) {
+                    const affectedId = data.parentId;
+                    const isDirectMatch = currentUpdatesItemId === affectedId;
+                    // For subitems, also check if the parentId matches
+                    let isSubMatch = false;
+                    if (data.parentType === 'subitem' && currentUpdatesParentId) {
+                        isSubMatch = currentUpdatesItemId === affectedId;
+                    }
+                    if (isDirectMatch || isSubMatch) {
+                        const item = currentUpdatesParentId
+                            ? findSubitem(currentUpdatesParentId, currentUpdatesItemId)
+                            : state.items.find(it => it.id === currentUpdatesItemId);
+                        if (item) renderUpdatesBody(item);
+                    }
+                }
+
+                // Also poll notifications since the update may have created one
+                pollNotifications();
+            }
+        } catch (e) { console.error('SSE parse error:', e); }
+    };
+
+    evtSource.onerror = () => {
+        evtSource.close();
+        // Reconnect after 5 seconds
+        setTimeout(connectSSE, 5000);
+    };
 }
 
 // ===== Admin Page Rendering =====

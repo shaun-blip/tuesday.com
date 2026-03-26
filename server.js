@@ -21,6 +21,41 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 initTransporter();
 
+// ===== Server-Sent Events (SSE) for real-time updates =====
+const sseClients = new Set();
+
+app.get('/api/events', (req, res) => {
+    // SSE supports auth via query param since EventSource doesn't support headers
+    const token = req.query.token || (req.headers.authorization || '').replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No token' });
+    let decoded;
+    try { decoded = jwt.verify(token, JWT_SECRET); } catch (e) { return res.status(401).json({ error: 'Invalid token' }); }
+    req.userId = decoded.id;
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
+    });
+    res.write('data: {"type":"connected"}\n\n');
+
+    const client = { res, userId: req.userId };
+    sseClients.add(client);
+
+    req.on('close', () => {
+        sseClients.delete(client);
+    });
+});
+
+function broadcastEvent(type, data, excludeUserId) {
+    const payload = JSON.stringify({ type, ...data });
+    for (const client of sseClients) {
+        // Don't send to the user who triggered the event — they already refresh locally
+        if (client.userId === excludeUserId) continue;
+        try { client.res.write(`data: ${payload}\n\n`); } catch (e) { sseClients.delete(client); }
+    }
+}
+
 // ===== JWT Middleware =====
 function auth(req, res, next) {
     const header = req.headers.authorization;
@@ -355,7 +390,7 @@ app.delete('/api/subitems/:id', auth, (req, res) => {
 // ===== Update/Comment Routes =====
 app.get('/api/items/:id/updates', auth, (req, res) => {
     try {
-        const updates = db.prepare('SELECT id, author_id AS author, text, created_at AS timestamp FROM updates_ WHERE parent_type=? AND parent_id=? ORDER BY created_at')
+        const updates = db.prepare('SELECT id, author_id AS author, text, reply_to AS replyTo, created_at AS timestamp FROM updates_ WHERE parent_type=? AND parent_id=? ORDER BY created_at')
           .all('item', req.params.id);
         res.json(updates);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -363,12 +398,12 @@ app.get('/api/items/:id/updates', auth, (req, res) => {
 
 app.post('/api/items/:id/updates', auth, (req, res) => {
     try {
-        const { text } = req.body;
+        const { text, replyTo } = req.body;
         if (!text) return res.status(400).json({ error: 'Text required' });
         const id = uuidv4();
         const now = Date.now();
-        db.prepare('INSERT INTO updates_ (id, parent_type, parent_id, author_id, text, created_at) VALUES (?,?,?,?,?,?)')
-          .run(id, 'item', req.params.id, req.userId, text, now);
+        db.prepare('INSERT INTO updates_ (id, parent_type, parent_id, author_id, text, reply_to, created_at) VALUES (?,?,?,?,?,?,?)')
+          .run(id, 'item', req.params.id, req.userId, text, replyTo || null, now);
         const item = db.prepare('SELECT title FROM items WHERE id = ?').get(req.params.id);
         const itemTitle = item?.title || '';
         logActivity(req.userId, 'posted_update', req.params.id, itemTitle, text.substring(0, 100));
@@ -376,13 +411,14 @@ app.post('/api/items/:id/updates', auth, (req, res) => {
         // Notifications for assigned persons
         notifyUpdate(req.userId, req.params.id, 'item', itemTitle, text);
 
-        res.json({ id, author: req.userId, text, timestamp: now });
+        broadcastEvent('update_posted', { parentType: 'item', parentId: req.params.id }, req.userId);
+        res.json({ id, author: req.userId, text, replyTo: replyTo || null, timestamp: now });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/subitems/:id/updates', auth, (req, res) => {
     try {
-        const updates = db.prepare('SELECT id, author_id AS author, text, created_at AS timestamp FROM updates_ WHERE parent_type=? AND parent_id=? ORDER BY created_at')
+        const updates = db.prepare('SELECT id, author_id AS author, text, reply_to AS replyTo, created_at AS timestamp FROM updates_ WHERE parent_type=? AND parent_id=? ORDER BY created_at')
           .all('subitem', req.params.id);
         res.json(updates);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -390,18 +426,19 @@ app.get('/api/subitems/:id/updates', auth, (req, res) => {
 
 app.post('/api/subitems/:id/updates', auth, (req, res) => {
     try {
-        const { text } = req.body;
+        const { text, replyTo } = req.body;
         if (!text) return res.status(400).json({ error: 'Text required' });
         const id = uuidv4();
         const now = Date.now();
-        db.prepare('INSERT INTO updates_ (id, parent_type, parent_id, author_id, text, created_at) VALUES (?,?,?,?,?,?)')
-          .run(id, 'subitem', req.params.id, req.userId, text, now);
+        db.prepare('INSERT INTO updates_ (id, parent_type, parent_id, author_id, text, reply_to, created_at) VALUES (?,?,?,?,?,?,?)')
+          .run(id, 'subitem', req.params.id, req.userId, text, replyTo || null, now);
         const sub = db.prepare('SELECT parent_id, title FROM subitems WHERE id = ?').get(req.params.id);
         if (sub) {
             logActivity(req.userId, 'posted_update', sub.parent_id, sub.title, text.substring(0, 100));
             notifyUpdate(req.userId, req.params.id, 'subitem', sub.title, text);
         }
-        res.json({ id, author: req.userId, text, timestamp: now });
+        broadcastEvent('update_posted', { parentType: 'subitem', parentId: req.params.id }, req.userId);
+        res.json({ id, author: req.userId, text, replyTo: replyTo || null, timestamp: now });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -414,6 +451,7 @@ app.put('/api/updates/:id', auth, (req, res) => {
         if (!upd) return res.status(404).json({ error: 'Update not found' });
         if (upd.author_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own updates' });
         db.prepare('UPDATE updates_ SET text = ? WHERE id = ?').run(text, req.params.id);
+        broadcastEvent('update_edited', { parentType: upd.parent_type, parentId: upd.parent_id }, req.userId);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -424,6 +462,7 @@ app.delete('/api/updates/:id', auth, (req, res) => {
         if (!upd) return res.status(404).json({ error: 'Update not found' });
         if (upd.author_id !== req.userId) return res.status(403).json({ error: 'You can only delete your own updates' });
         db.prepare('DELETE FROM updates_ WHERE id = ?').run(req.params.id);
+        broadcastEvent('update_deleted', { parentType: upd.parent_type, parentId: upd.parent_id }, req.userId);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -601,6 +601,19 @@ html, body { height:100%; font-family:'Figtree', -apple-system, BlinkMacSystemFo
     100% { background:transparent; }
 }
 
+/* ===== Threaded Replies ===== */
+.reply-thread { margin-left:24px; padding-left:12px; border-left:2px solid var(--border); }
+.reply-item { padding-bottom:10px; margin-bottom:10px; }
+.reply-item .update-text { padding-left:32px; font-size:13px; }
+.reply-item .update-author-name { font-size:12px; }
+.update-footer { padding-left:36px; margin-top:4px; }
+.update-reply-btn { background:none; border:none; color:var(--text-muted); font-size:12px; cursor:pointer; padding:2px 6px; border-radius:3px; font-family:inherit; transition:all 100ms; }
+.update-reply-btn:hover { color:var(--primary); background:rgba(0,115,234,.06); }
+.reply-indicator { display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(0,115,234,.06); border-left:3px solid var(--primary); border-radius:0 4px 4px 0; margin-bottom:8px; font-size:12px; color:var(--text-secondary); }
+.reply-indicator strong { color:var(--text); }
+.reply-cancel-btn { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1; padding:0 4px; }
+.reply-cancel-btn:hover { color:var(--text); }
+
 /* ===== Responsive ===== */
 @media (max-width:900px) {
     #sidebar { display:none; }
