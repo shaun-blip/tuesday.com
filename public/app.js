@@ -429,9 +429,51 @@ function renderUpdatesBody(item) {
     const sorted = [...item.updates].sort((a,b) => b.timestamp - a.timestamp);
     sorted.forEach(upd => {
         const member = state.members.find(m => m.id === upd.author);
+        const isOwn = currentUser && upd.author === currentUser.id;
         const el = document.createElement('div');
         el.className = 'update-item';
-        el.innerHTML = `<div class="update-header"><span class="avatar" style="background:${member?member.color:'#999'};width:28px;height:28px;font-size:11px;font-weight:600;">${member?esc(member.name):'?'}</span><span class="update-author-name">${member?esc(member.fullName):'Unknown'}</span><span class="update-timestamp">${formatTimestamp(upd.timestamp)}</span></div><div class="update-text">${highlightMentions(upd.text)}</div>`;
+        el.dataset.updateId = upd.id;
+        el.innerHTML = `<div class="update-header"><span class="avatar" style="background:${member?member.color:'#999'};width:28px;height:28px;font-size:11px;font-weight:600;">${member?esc(member.name):'?'}</span><span class="update-author-name">${member?esc(member.fullName):'Unknown'}</span><span class="update-timestamp">${formatTimestamp(upd.timestamp)}</span>${isOwn ? '<div class="update-actions"><button class="update-edit-btn" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="update-delete-btn" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div>' : ''}</div><div class="update-text">${highlightMentions(upd.text)}</div>`;
+
+        // Edit button handler
+        if (isOwn) {
+            el.querySelector('.update-edit-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const textDiv = el.querySelector('.update-text');
+                const originalText = upd.text;
+                textDiv.innerHTML = `<textarea class="update-edit-textarea">${esc(originalText)}</textarea><div class="update-edit-actions"><button class="btn-cancel update-edit-cancel">Cancel</button><button class="btn-save update-edit-save">Save</button></div>`;
+                const textarea = textDiv.querySelector('textarea');
+                textarea.focus();
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+                textDiv.querySelector('.update-edit-cancel').addEventListener('click', () => {
+                    textDiv.innerHTML = highlightMentions(originalText);
+                });
+                textDiv.querySelector('.update-edit-save').addEventListener('click', async () => {
+                    const newText = textarea.value.trim();
+                    if (!newText) return;
+                    try {
+                        await api('PUT', '/api/updates/' + upd.id, { text: newText });
+                        await fetchBoard();
+                        const refreshedItem = currentUpdatesParentId ? findSubitem(currentUpdatesParentId, currentUpdatesItemId) : state.items.find(it => it.id === currentUpdatesItemId);
+                        if (refreshedItem) renderUpdatesBody(refreshedItem);
+                    } catch (err) { alert(err.message); }
+                });
+            });
+
+            // Delete button handler
+            el.querySelector('.update-delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showConfirm('Delete this comment? This cannot be undone.', async () => {
+                    try {
+                        await api('DELETE', '/api/updates/' + upd.id);
+                        await fetchBoard();
+                        const refreshedItem = currentUpdatesParentId ? findSubitem(currentUpdatesParentId, currentUpdatesItemId) : state.items.find(it => it.id === currentUpdatesItemId);
+                        if (refreshedItem) renderUpdatesBody(refreshedItem);
+                    } catch (err) { alert(err.message); }
+                });
+            });
+        }
+
         body.appendChild(el);
     });
 }
@@ -723,6 +765,16 @@ async function pollNotifications() {
     } catch (e) { /* silent */ }
 }
 
+function getNotifTypeIcon(type) {
+    switch(type) {
+        case 'assigned': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>';
+        case 'mention': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></svg>';
+        case 'update': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+        case 'status_change': return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+        default: return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    }
+}
+
 async function renderNotifications() {
     try {
         const notifs = await api('GET', '/api/notifications');
@@ -731,19 +783,101 @@ async function renderNotifications() {
             list.innerHTML = '<div class="notif-empty">No notifications</div>';
             return;
         }
-        list.innerHTML = notifs.map(n => `
-            <div class="notif-item ${n.read ? '' : 'unread'}" data-notif-id="${n.id}" data-item-id="${n.item_id}">
-                <div class="notif-message">${esc(n.actor_name || '')} ${esc(n.message || '')}</div>
+        list.innerHTML = notifs.map(n => {
+            const groupColor = n.group_color || '#999';
+            const typeIcon = getNotifTypeIcon(n.type);
+            return `
+            <div class="notif-item ${n.read ? '' : 'unread'}" data-notif-id="${n.id}" data-item-id="${n.item_id}" data-notif-type="${n.type || ''}" data-parent-type="${n.parent_type || 'item'}" style="border-left:4px solid ${groupColor};">
+                <div class="notif-item-top">
+                    <span class="notif-type-icon" style="color:${groupColor}">${typeIcon}</span>
+                    <span class="notif-type-label">${esc((n.type || '').replace(/_/g, ' '))}</span>
+                    <button class="notif-dismiss-btn" data-notif-id="${n.id}" title="Mark as read">✓</button>
+                </div>
+                <div class="notif-message">${esc(n.message || '')}</div>
                 <div class="notif-item-title">${esc(n.item_title || '')}</div>
                 <div class="notif-time">${formatTimestamp(n.created_at)}</div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
+
+        // Individual dismiss buttons
+        list.querySelectorAll('.notif-dismiss-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const nid = btn.dataset.notifId;
+                await api('PUT', '/api/notifications/' + nid + '/read');
+                const notifEl = btn.closest('.notif-item');
+                notifEl.classList.remove('unread');
+                notifEl.classList.add('read-dismissed');
+                pollNotifications();
+            });
+        });
+
+        // Click to navigate to the task
         list.querySelectorAll('.notif-item').forEach(el => {
             el.addEventListener('click', async () => {
                 const nid = el.dataset.notifId;
+                const itemId = el.dataset.itemId;
+                const notifType = el.dataset.notifType;
+                const parentType = el.dataset.parentType;
+
+                // Mark as read
                 await api('PUT', '/api/notifications/' + nid + '/read');
                 el.classList.remove('unread');
                 pollNotifications();
+
+                // Close the dropdown
+                $('#notif-dropdown').classList.remove('open');
+
+                // Navigate to the board first
+                if (currentPage !== 'board') {
+                    window.location.hash = '#board';
+                    await new Promise(r => setTimeout(r, 200));
+                }
+
+                // Find the item in the DOM and scroll to it
+                if (itemId) {
+                    // For subitems, we need to find the parent and expand it first
+                    if (parentType === 'subitem') {
+                        // Find which parent item owns this subitem
+                        for (const item of state.items) {
+                            if (item.subitems) {
+                                const sub = item.subitems.find(s => s.id === itemId);
+                                if (sub) {
+                                    // Expand the parent's subitems if collapsed
+                                    if (item.subitemsCollapsed) {
+                                        await api('PUT', '/api/items/' + item.id, { subitems_collapsed: false });
+                                        await fetchBoard();
+                                        await new Promise(r => setTimeout(r, 100));
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Now find and scroll to the row
+                    const targetRow = document.querySelector(`tr[data-item-id="${itemId}"]`);
+                    if (targetRow) {
+                        targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        targetRow.classList.add('notif-highlight');
+                        setTimeout(() => targetRow.classList.remove('notif-highlight'), 2000);
+
+                        // If it's an update/mention notification, open the updates panel
+                        if (notifType === 'update' || notifType === 'mention') {
+                            // Determine parentId for subitems
+                            if (parentType === 'subitem') {
+                                for (const item of state.items) {
+                                    if (item.subitems) {
+                                        const sub = item.subitems.find(s => s.id === itemId);
+                                        if (sub) { openUpdatesPanel(itemId, item.id); break; }
+                                    }
+                                }
+                            } else {
+                                openUpdatesPanel(itemId, null);
+                            }
+                        }
+                    }
+                }
             });
         });
     } catch (e) { console.error('Notification error:', e); }
@@ -825,6 +959,31 @@ function initDragAndDrop() {
                 });
                 await api('PUT', '/api/items/reorder', { items: allItems });
                 await fetchBoard();
+            }
+        });
+    });
+
+    // Subitem drag-and-drop between parents
+    tableContent.querySelectorAll('.subitem-container').forEach(container => {
+        new Sortable(container, {
+            animation: 150,
+            group: 'subitems',
+            handle: '.subitem-drag-handle',
+            draggable: '.subitem-row',
+            ghostClass: 'drag-ghost',
+            onEnd: async (evt) => {
+                // Collect all subitem positions across all parents
+                const allSubitems = [];
+                tableContent.querySelectorAll('.subitem-container').forEach(cont => {
+                    const parentId = cont.dataset.parentId;
+                    cont.querySelectorAll('.subitem-row').forEach((tr, idx) => {
+                        allSubitems.push({ id: tr.dataset.itemId, parent_id: parentId, position: idx });
+                    });
+                });
+                if (allSubitems.length > 0) {
+                    await api('PUT', '/api/subitems/reorder', { items: allSubitems });
+                    await fetchBoard();
+                }
             }
         });
     });
@@ -920,12 +1079,13 @@ function renderItemRow(tbody, item, group, colH, parentId) {
     const addSubBtn = !isSubitem ? '<button class="add-subitem-btn">+ Sub</button>' : '';
     const updCount = (item.updates && item.updates.length > 0) ? `<span class="updates-badge">${item.updates.length > 99 ? '99+' : item.updates.length}</span>` : '';
 
-    const borderStyle = isSubitem ? `border-left:3px solid ${group.color};padding-left:28px;opacity:0.5;` : `border-left:6px solid ${group.color};padding-left:8px;`;
+    const borderStyle = isSubitem ? `border-left:3px solid ${group.color};padding-left:28px;` : `border-left:6px solid ${group.color};padding-left:8px;`;
+    const dragHandle = isSubitem ? '<span class="subitem-drag-handle" title="Drag to move">⠿</span>' : '';
 
     tr.innerHTML = `
         <td style="width:32px;"><div style="${borderStyle}"><input type="checkbox" class="row-checkbox"></div></td>
         <td class="updates-icon-cell"><button class="updates-icon" title="Updates"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${updCount}</button></td>
-        <td class="item-name">${toggleHtml}${esc(item.title)}${countBadge}${addSubBtn}</td>
+        <td class="item-name">${dragHandle}${toggleHtml}${esc(item.title)}${countBadge}${addSubBtn}</td>
         <td class="person-cell${colH('person')}"><div class="avatar-stack">${renderAvatars(item.persons)}</div></td>
         <td class="status-cell${colH('status')}">${renderStatusLabel(item.status)}</td>
         <td class="priority-cell${colH('priority')}">${renderPriorityLabel(item.priority)}</td>
@@ -988,14 +1148,46 @@ function renderItemRow(tbody, item, group, colH, parentId) {
 
     tbody.appendChild(tr);
 
-    // Render subitems if expanded
+    // Render subitems if expanded — wrap in a container for drag-and-drop between parents
     if (!isSubitem && hasSubitems && !item.subitemsCollapsed) {
-        item.subitems.forEach(sub => renderItemRow(tbody, sub, group, colH, item.id));
+        // Create a subitem container tbody-like section for drag-and-drop
+        const subContainer = document.createElement('tbody');
+        subContainer.className = 'subitem-container';
+        subContainer.dataset.parentId = item.id;
+        item.subitems.forEach(sub => renderItemRow(subContainer, sub, group, colH, item.id));
+        // Insert subContainer rows into the main tbody
+        const subRows = [...subContainer.children];
+        subRows.forEach(row => tbody.appendChild(row));
+
+        // We need the actual container in the DOM for sortable - create a wrapper
+        // Actually let's use a different approach: wrap subitem rows in a nested element
+        // For SortableJS to work, subitems need a common parent container
+        // We'll create a tr with a td that contains the sub-container table
+        const subWrapperRow = document.createElement('tr');
+        subWrapperRow.className = 'subitem-wrapper-row';
+        const subWrapperCell = document.createElement('td');
+        subWrapperCell.setAttribute('colspan', '8');
+        subWrapperCell.style.padding = '0';
+        const subTable = document.createElement('table');
+        subTable.className = 'group-table subitem-table';
+        subTable.style.width = '100%';
+        const subTbody = document.createElement('tbody');
+        subTbody.className = 'subitem-container';
+        subTbody.dataset.parentId = item.id;
+        item.subitems.forEach(sub => renderItemRow(subTbody, sub, group, colH, item.id));
+        subTable.appendChild(subTbody);
+        subWrapperCell.appendChild(subTable);
+        subWrapperRow.appendChild(subWrapperCell);
+        // Remove the previously added subRows from main tbody
+        subRows.forEach(row => { if (row.parentNode === tbody) tbody.removeChild(row); });
+        tbody.appendChild(subWrapperRow);
 
         const addSubRow = document.createElement('tr');
         addSubRow.innerHTML = `<td colspan="8"><div class="add-subitem-row">+ Add subitem</div></td>`;
         addSubRow.querySelector('.add-subitem-row').addEventListener('click', () => openNewSubitem(item.id));
         tbody.appendChild(addSubRow);
+    } else if (!isSubitem && !hasSubitems && !item.subitemsCollapsed) {
+        // No subitems but expanded - still show add subitem row
     }
 }
 

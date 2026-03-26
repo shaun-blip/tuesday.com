@@ -315,6 +315,17 @@ app.post('/api/items/:id/subitems', auth, (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// NOTE: /reorder must be before /:id so Express doesn't match "reorder" as an :id param
+app.put('/api/subitems/reorder', auth, (req, res) => {
+    try {
+        const { items } = req.body; // [{id, parent_id, position}]
+        const stmt = db.prepare('UPDATE subitems SET parent_id = ?, position = ? WHERE id = ?');
+        const tx = db.transaction(() => { for (const i of items) stmt.run(i.parent_id, i.position, i.id); });
+        tx();
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.put('/api/subitems/:id', auth, (req, res) => {
     try {
         const sub = db.prepare('SELECT * FROM subitems WHERE id = ?').get(req.params.id);
@@ -394,6 +405,29 @@ app.post('/api/subitems/:id/updates', auth, (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== Update Edit/Delete Routes =====
+app.put('/api/updates/:id', auth, (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text) return res.status(400).json({ error: 'Text required' });
+        const upd = db.prepare('SELECT * FROM updates_ WHERE id = ?').get(req.params.id);
+        if (!upd) return res.status(404).json({ error: 'Update not found' });
+        if (upd.author_id !== req.userId) return res.status(403).json({ error: 'You can only edit your own updates' });
+        db.prepare('UPDATE updates_ SET text = ? WHERE id = ?').run(text, req.params.id);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/updates/:id', auth, (req, res) => {
+    try {
+        const upd = db.prepare('SELECT * FROM updates_ WHERE id = ?').get(req.params.id);
+        if (!upd) return res.status(404).json({ error: 'Update not found' });
+        if (upd.author_id !== req.userId) return res.status(403).json({ error: 'You can only delete your own updates' });
+        db.prepare('DELETE FROM updates_ WHERE id = ?').run(req.params.id);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== Attachment Routes =====
 app.post('/api/attachments', auth, (req, res) => {
     try {
@@ -443,14 +477,40 @@ app.put('/api/notifications/read-all', auth, (req, res) => {
 });
 
 // ===== Notification Helpers =====
+function getGroupColorForItem(itemId) {
+    // Try as item first
+    const item = db.prepare('SELECT group_id FROM items WHERE id = ?').get(itemId);
+    if (item) {
+        const group = db.prepare('SELECT color FROM groups_ WHERE id = ?').get(item.group_id);
+        return group ? group.color : '';
+    }
+    // Try as subitem
+    const sub = db.prepare('SELECT parent_id FROM subitems WHERE id = ?').get(itemId);
+    if (sub) {
+        const parent = db.prepare('SELECT group_id FROM items WHERE id = ?').get(sub.parent_id);
+        if (parent) {
+            const group = db.prepare('SELECT color FROM groups_ WHERE id = ?').get(parent.group_id);
+            return group ? group.color : '';
+        }
+    }
+    return '';
+}
+
+function getParentType(itemId) {
+    const item = db.prepare('SELECT id FROM items WHERE id = ?').get(itemId);
+    return item ? 'item' : 'subitem';
+}
+
 function notifyAssignment(actorId, newPersonIds, itemId, itemTitle) {
     const actor = db.prepare('SELECT name, email FROM users WHERE id = ?').get(actorId);
     if (!actor) return;
+    const groupColor = getGroupColorForItem(itemId);
+    const parentType = getParentType(itemId);
     for (const pid of newPersonIds) {
         if (pid === actorId) continue; // Don't notify yourself
         const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(pid);
         if (!user) continue;
-        createNotification(pid, 'assigned', itemId, itemTitle, actor.name, `${actor.name} assigned you to "${itemTitle}"`);
+        createNotification(pid, 'assigned', itemId, itemTitle, actor.name, `${actor.name} assigned you to "${itemTitle}"`, groupColor, parentType);
         sendAssignmentEmail(user.email, user.name, itemTitle, actor.name).catch(e => console.error('Email send failed:', e.message));
     }
 }
@@ -473,13 +533,14 @@ function notifyUpdate(actorId, parentId, parentType, itemTitle, text) {
     const mentionedUsers = allUsers.filter(u => text.includes('@' + u.name) && u.id !== actorId);
 
     // Notify assigned persons
+    const groupColor = getGroupColorForItem(parentId);
     const notified = new Set();
     for (const pid of personIds) {
         if (pid === actorId || notified.has(pid)) continue;
         notified.add(pid);
         const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(pid);
         if (!user) continue;
-        createNotification(pid, 'update', parentId, itemTitle, actor.name, `${actor.name} posted an update on "${itemTitle}"`);
+        createNotification(pid, 'update', parentId, itemTitle, actor.name, `${actor.name} posted an update on "${itemTitle}"`, groupColor, parentType);
         sendUpdateEmail(user.email, user.name, itemTitle, actor.name, text).catch(e => console.error('Email send failed:', e.message));
     }
 
@@ -487,7 +548,7 @@ function notifyUpdate(actorId, parentId, parentType, itemTitle, text) {
     for (const u of mentionedUsers) {
         if (notified.has(u.id)) continue;
         notified.add(u.id);
-        createNotification(u.id, 'mention', parentId, itemTitle, actor.name, `${actor.name} mentioned you on "${itemTitle}"`);
+        createNotification(u.id, 'mention', parentId, itemTitle, actor.name, `${actor.name} mentioned you on "${itemTitle}"`, groupColor, parentType);
         sendMentionEmail(u.email, u.name, itemTitle, actor.name, text).catch(e => console.error('Email send failed:', e.message));
     }
 }
@@ -495,11 +556,12 @@ function notifyUpdate(actorId, parentId, parentType, itemTitle, text) {
 function notifyStatusChange(actorId, itemId, itemTitle, newStatus) {
     const actor = db.prepare('SELECT name FROM users WHERE id = ?').get(actorId);
     if (!actor) return;
+    const groupColor = getGroupColorForItem(itemId);
     const personIds = db.prepare('SELECT user_id FROM item_persons WHERE item_id = ?').all(itemId).map(r => r.user_id);
     for (const pid of personIds) {
         if (pid === actorId) continue;
         createNotification(pid, 'status_change', itemId, itemTitle, actor.name,
-            `${actor.name} changed status of "${itemTitle}" to ${newStatus}`);
+            `${actor.name} changed status of "${itemTitle}" to ${newStatus}`, groupColor, 'item');
     }
 }
 

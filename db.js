@@ -94,6 +94,8 @@ function createTables() {
             actor_name TEXT,
             message TEXT NOT NULL,
             read INTEGER DEFAULT 0,
+            group_color TEXT DEFAULT '',
+            parent_type TEXT DEFAULT 'item',
             created_at INTEGER DEFAULT (CAST(strftime('%s','now') AS INTEGER)*1000)
         );
         CREATE TABLE IF NOT EXISTS activity_log (
@@ -364,13 +366,30 @@ function logActivity(userId, action, itemId, itemTitle, details) {
 }
 
 // Create a notification
-function createNotification(userId, type, itemId, itemTitle, actorName, message) {
-    db.prepare('INSERT INTO notifications (id, user_id, type, item_id, item_title, actor_name, message) VALUES (?,?,?,?,?,?,?)')
-      .run(uuidv4(), userId, type, itemId || null, itemTitle || null, actorName || null, message);
+function createNotification(userId, type, itemId, itemTitle, actorName, message, groupColor, parentType) {
+    db.prepare('INSERT INTO notifications (id, user_id, type, item_id, item_title, actor_name, message, group_color, parent_type) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(uuidv4(), userId, type, itemId || null, itemTitle || null, actorName || null, message, groupColor || '', parentType || 'item');
+}
+
+// Migrations for existing databases
+function runMigrations() {
+    // Add group_color and parent_type columns to notifications if they don't exist
+    try {
+        const cols = db.prepare("PRAGMA table_info(notifications)").all().map(c => c.name);
+        if (!cols.includes('group_color')) {
+            db.exec("ALTER TABLE notifications ADD COLUMN group_color TEXT DEFAULT ''");
+            console.log('Migration: added group_color to notifications');
+        }
+        if (!cols.includes('parent_type')) {
+            db.exec("ALTER TABLE notifications ADD COLUMN parent_type TEXT DEFAULT 'item'");
+            console.log('Migration: added parent_type to notifications');
+        }
+    } catch (e) { console.log('Migration check:', e.message); }
 }
 
 // Initialize
 createTables();
+runMigrations();
 seedData();
 
 module.exports = { db, getBoard, getMyWork, getDashboard, logActivity, createNotification };

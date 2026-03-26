@@ -563,6 +563,44 @@ html, body { height:100%; font-family:'Figtree', -apple-system, BlinkMacSystemFo
 .item-name { cursor:grab; }
 .item-name:active { cursor:grabbing; }
 
+/* ===== Comment Edit/Delete Actions ===== */
+.update-actions { display:flex; gap:4px; margin-left:auto; }
+.update-edit-btn, .update-delete-btn { background:none; border:none; color:var(--text-muted); cursor:pointer; padding:3px 5px; border-radius:4px; transition:all 100ms; opacity:0; }
+.update-item:hover .update-edit-btn, .update-item:hover .update-delete-btn { opacity:1; }
+.update-edit-btn:hover { color:var(--primary); background:rgba(0,115,234,.08); }
+.update-delete-btn:hover { color:#e2445c; background:rgba(226,68,92,.08); }
+.update-edit-textarea { width:100%; min-height:60px; padding:8px 10px; border:1px solid var(--primary); border-radius:var(--radius); font-family:inherit; font-size:14px; color:var(--text); resize:vertical; outline:none; box-shadow:0 0 0 2px rgba(0,115,234,.1); }
+.update-edit-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+.update-edit-actions .btn-cancel, .update-edit-actions .btn-save { padding:4px 14px; font-size:12px; }
+
+/* ===== Subitem Drag Handle ===== */
+.subitem-drag-handle { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; color:var(--text-muted); cursor:grab; font-size:12px; margin-right:4px; border-radius:3px; transition:all 100ms; vertical-align:middle; opacity:0; }
+.subitem-row:hover .subitem-drag-handle { opacity:1; }
+.subitem-drag-handle:hover { color:var(--primary); background:rgba(0,115,234,.08); }
+.subitem-drag-handle:active { cursor:grabbing; }
+.subitem-container { min-height:2px; }
+.subitem-wrapper-row td { padding:0 !important; }
+.subitem-table { border-collapse:collapse; }
+
+/* ===== Enhanced Notification Items ===== */
+.notif-item { border-left:4px solid #999; }
+.notif-item.unread { background:rgba(0,115,234,.04); }
+.notif-item-top { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+.notif-type-icon { display:flex; align-items:center; flex-shrink:0; }
+.notif-type-label { font-size:10px; font-weight:600; text-transform:uppercase; color:var(--text-muted); letter-spacing:.3px; flex:1; }
+.notif-dismiss-btn { background:none; border:1px solid var(--border); color:var(--text-muted); cursor:pointer; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; transition:all 100ms; flex-shrink:0; opacity:0; }
+.notif-item:hover .notif-dismiss-btn { opacity:1; }
+.notif-dismiss-btn:hover { background:var(--status-done); color:#fff; border-color:var(--status-done); }
+.notif-item.read-dismissed { opacity:0.5; }
+
+/* Notification highlight animation for navigated-to rows */
+.notif-highlight { animation:notifFlash 2s ease; }
+@keyframes notifFlash {
+    0% { background:rgba(0,115,234,.2); }
+    50% { background:rgba(0,115,234,.1); }
+    100% { background:transparent; }
+}
+
 /* ===== Responsive ===== */
 @media (max-width:900px) {
     #sidebar { display:none; }
