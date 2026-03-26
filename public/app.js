@@ -23,7 +23,7 @@ async function fetchBoard() {
     state.members = data.members;
     state.groups = data.groups;
     state.items = data.items;
-    if (currentPage === 'board') render();
+    if (currentPage === 'board' || currentPage === 'calendar') render();
 }
 
 // ===== State =====
@@ -35,6 +35,11 @@ let filterPriorities = [];
 let activeSort = '';
 let hiddenCols = [];
 let groupByMode = 'default';
+
+// Calendar state
+let calendarYear = new Date().getFullYear();
+let calendarMonth = new Date().getMonth();
+let calendarFilterGroups = []; // empty = show all
 
 // loadState/saveState removed — data is fetched from server via fetchBoard()
 
@@ -723,7 +728,7 @@ function formatTimestamp(ts) {
 
 // ===== Page Routing =====
 function navigateTo(page) {
-    const pages = ['home', 'board', 'my-work', 'admin'];
+    const pages = ['home', 'board', 'my-work', 'admin', 'calendar'];
     if (!pages.includes(page)) page = 'home';
     currentPage = page;
     // Show/hide page containers
@@ -739,16 +744,17 @@ function navigateTo(page) {
     if (page === 'home') titleEl.textContent = 'Home';
     else if (page === 'my-work') titleEl.textContent = 'My Work';
     else if (page === 'admin') titleEl.textContent = 'Members';
+    else if (page === 'calendar') titleEl.textContent = 'Beau Bottles Marketing Calendar';
     else titleEl.textContent = state.boardName || 'Beau Bottles Workflow';
     // Update sidebar active state
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    const navId = page === 'board' ? null : 'nav-' + page;
+    const navId = (page === 'board' || page === 'calendar') ? null : 'nav-' + page;
     if (navId) { const n = $('#' + navId); if (n) n.classList.add('active'); }
-    document.querySelectorAll('.board-list-item').forEach(b => b.classList.toggle('active', page === 'board'));
     // Render page content
     if (page === 'home') renderDashboard();
     else if (page === 'my-work') renderMyWork();
     else if (page === 'admin') renderAdmin();
+    else if (page === 'calendar') renderCalendar();
     else renderTable();
 }
 
@@ -766,6 +772,12 @@ function renderSidebar() {
     item.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg> Beau Bottles Workflow`;
     item.addEventListener('click', () => { window.location.hash = '#board'; });
     boardListEl.appendChild(item);
+    // Calendar sidebar entry
+    const calItem = document.createElement('div');
+    calItem.className = 'board-list-item' + (currentPage === 'calendar' ? ' active' : '');
+    calItem.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Marketing Calendar`;
+    calItem.addEventListener('click', () => { window.location.hash = '#calendar'; });
+    boardListEl.appendChild(calItem);
     // User profile in sidebar
     if (currentUser) {
         const m = state.members.find(mm => mm.id === currentUser.id);
@@ -1688,9 +1700,26 @@ async function init() {
         m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); });
     });
 
+    // Calendar navigation
+    const calPrev = $('#calendar-prev');
+    const calNext = $('#calendar-next');
+    const calToday = $('#calendar-today');
+    if (calPrev) calPrev.addEventListener('click', calendarPrevMonth);
+    if (calNext) calNext.addEventListener('click', calendarNextMonth);
+    if (calToday) calToday.addEventListener('click', calendarToday);
+
+    // Close calendar group picker on outside click
+    document.addEventListener('click', (e) => {
+        const picker = $('#calendar-group-picker');
+        if (picker && picker.style.display !== 'none' && !picker.contains(e.target)) {
+            closeCalendarGroupPicker();
+        }
+    });
+
     // Escape key (priority order)
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
+            closeCalendarGroupPicker();
             if (inlinePopup.classList.contains('open')) { closeInlinePopup(); return; }
             if (updatesPanel.classList.contains('open')) { closeUpdatesPanel(); return; }
             [itemModal, groupModal, confirmModal].forEach(m => m.classList.remove('open'));
@@ -1897,6 +1926,236 @@ function connectSSE() {
         // Reconnect after 5 seconds
         setTimeout(connectSSE, 5000);
     };
+}
+
+// ===== Marketing Calendar =====
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function formatDateStr(y, m, d) {
+    return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+
+function calendarPrevMonth() { calendarMonth--; if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; } renderCalendar(); }
+function calendarNextMonth() { calendarMonth++; if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; } renderCalendar(); }
+function calendarToday() { calendarYear = new Date().getFullYear(); calendarMonth = new Date().getMonth(); renderCalendar(); }
+
+function toggleCalendarGroupFilter(groupId) {
+    const idx = calendarFilterGroups.indexOf(groupId);
+    if (idx >= 0) calendarFilterGroups.splice(idx, 1);
+    else calendarFilterGroups.push(groupId);
+    renderCalendar();
+}
+
+function renderCalendar() {
+    // Month label
+    const label = $('#calendar-month-label');
+    if (label) label.textContent = MONTH_NAMES[calendarMonth] + ' ' + calendarYear;
+
+    // Category filter chips
+    const filtersEl = $('#calendar-filters');
+    if (filtersEl) {
+        filtersEl.innerHTML = '';
+        state.groups.forEach(g => {
+            const chip = document.createElement('span');
+            const isActive = calendarFilterGroups.length === 0 || calendarFilterGroups.includes(g.id);
+            chip.className = 'calendar-filter-chip' + (isActive ? ' active' : ' inactive');
+            chip.style.background = g.color;
+            chip.textContent = g.name;
+            chip.title = isActive ? 'Click to hide' : 'Click to show';
+            chip.addEventListener('click', () => toggleCalendarGroupFilter(g.id));
+            filtersEl.appendChild(chip);
+        });
+        // Add category button
+        const addBtn = document.createElement('button');
+        addBtn.className = 'calendar-add-category';
+        addBtn.textContent = '+ Add Category';
+        addBtn.addEventListener('click', () => openNewGroup());
+        filtersEl.appendChild(addBtn);
+    }
+
+    // Build calendar grid
+    const grid = $('#calendar-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    // Day headers
+    DAY_NAMES.forEach(d => {
+        const hdr = document.createElement('div');
+        hdr.className = 'calendar-day-header';
+        hdr.textContent = d;
+        grid.appendChild(hdr);
+    });
+
+    // Calculate month grid
+    const firstDay = new Date(calendarYear, calendarMonth, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+    const daysInPrevMonth = new Date(calendarYear, calendarMonth, 0).getDate();
+    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+
+    const todayStr = formatDateStr(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+
+    // Index items by date for fast lookup
+    const itemsByDate = {};
+    state.items.forEach(it => {
+        if (!it.date) return;
+        if (calendarFilterGroups.length > 0 && !calendarFilterGroups.includes(it.groupId)) return;
+        (itemsByDate[it.date] = itemsByDate[it.date] || []).push(it);
+    });
+
+    for (let i = 0; i < totalCells; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'calendar-day';
+
+        let year = calendarYear, month = calendarMonth, day;
+        if (i < firstDay) {
+            // Previous month
+            day = daysInPrevMonth - firstDay + i + 1;
+            month = calendarMonth - 1;
+            if (month < 0) { month = 11; year--; }
+            cell.classList.add('other-month');
+        } else if (i >= firstDay + daysInMonth) {
+            // Next month
+            day = i - firstDay - daysInMonth + 1;
+            month = calendarMonth + 1;
+            if (month > 11) { month = 0; year++; }
+            cell.classList.add('other-month');
+        } else {
+            // Current month
+            day = i - firstDay + 1;
+        }
+
+        const dateStr = formatDateStr(year, month, day);
+        cell.dataset.date = dateStr;
+
+        if (dateStr === todayStr) cell.classList.add('today');
+
+        // Day number
+        const num = document.createElement('div');
+        num.className = 'calendar-day-number';
+        num.textContent = day;
+        cell.appendChild(num);
+
+        // Items for this day
+        const dayItems = itemsByDate[dateStr] || [];
+        dayItems.forEach(it => {
+            const group = state.groups.find(g => g.id === it.groupId);
+            const itemEl = document.createElement('div');
+            itemEl.className = 'calendar-item';
+            itemEl.style.borderLeftColor = group ? group.color : '#999';
+            itemEl.dataset.itemId = it.id;
+            itemEl.draggable = true;
+
+            // Status dot
+            const statusCfg = STATUS_CONFIG[it.status];
+            if (statusCfg) {
+                const dot = document.createElement('span');
+                dot.className = 'calendar-item-status';
+                dot.style.background = statusCfg.hex;
+                dot.title = statusCfg.label;
+                itemEl.appendChild(dot);
+            }
+
+            // Title
+            const title = document.createElement('span');
+            title.className = 'calendar-item-title';
+            title.textContent = it.title;
+            title.title = it.title;
+            itemEl.appendChild(title);
+
+            // Persons (tiny avatars)
+            if (it.persons && it.persons.length > 0) {
+                const personsEl = document.createElement('span');
+                personsEl.className = 'calendar-item-persons';
+                it.persons.slice(0, 3).forEach(pid => {
+                    const m = state.members.find(mm => mm.id === pid);
+                    if (!m) return;
+                    const av = document.createElement('span');
+                    av.className = 'calendar-item-avatar';
+                    av.style.background = m.color;
+                    av.textContent = m.name;
+                    av.title = m.fullName;
+                    personsEl.appendChild(av);
+                });
+                itemEl.appendChild(personsEl);
+            }
+
+            // Click to edit
+            itemEl.addEventListener('click', (e) => { e.stopPropagation(); openEditItem(it.id); });
+
+            // Drag start
+            itemEl.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', it.id);
+                e.dataTransfer.effectAllowed = 'move';
+                itemEl.classList.add('dragging');
+            });
+            itemEl.addEventListener('dragend', () => { itemEl.classList.remove('dragging'); });
+
+            cell.appendChild(itemEl);
+        });
+
+        // Day cell click to create new item
+        cell.addEventListener('click', (e) => {
+            if (e.target.closest('.calendar-item')) return;
+            e.stopPropagation();
+            showCalendarGroupPicker(dateStr, e.clientX, e.clientY);
+        });
+
+        // Drop target for drag-and-drop rescheduling
+        cell.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; cell.classList.add('drag-over'); });
+        cell.addEventListener('dragleave', () => { cell.classList.remove('drag-over'); });
+        cell.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            cell.classList.remove('drag-over');
+            const itemId = e.dataTransfer.getData('text/plain');
+            if (!itemId) return;
+            const newDate = cell.dataset.date;
+            await api('PUT', '/api/items/' + itemId, { date: newDate });
+            await fetchBoard();
+        });
+
+        grid.appendChild(cell);
+    }
+}
+
+function showCalendarGroupPicker(dateStr, x, y) {
+    const picker = $('#calendar-group-picker');
+    picker.innerHTML = '';
+    picker.style.display = 'block';
+
+    // Position near click, keeping on screen
+    let left = x + 4;
+    let top = y + 4;
+    if (left + 260 > window.innerWidth) left = window.innerWidth - 270;
+    if (top + 300 > window.innerHeight) top = y - 200;
+    if (left < 10) left = 10;
+    if (top < 10) top = 10;
+    picker.style.left = left + 'px';
+    picker.style.top = top + 'px';
+
+    // Header
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'padding:10px 14px 6px;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.3px;';
+    hdr.textContent = 'Choose category';
+    picker.appendChild(hdr);
+
+    state.groups.forEach(g => {
+        const opt = document.createElement('div');
+        opt.className = 'calendar-group-picker-item';
+        opt.innerHTML = `<span class="calendar-group-picker-dot" style="background:${g.color}"></span><span class="calendar-group-picker-name">${esc(g.name)}</span>`;
+        opt.addEventListener('click', () => {
+            picker.style.display = 'none';
+            openNewItem(g.id);
+            // Pre-fill the date after modal opens
+            setTimeout(() => { itemDateInput.value = dateStr; }, 50);
+        });
+        picker.appendChild(opt);
+    });
+}
+
+function closeCalendarGroupPicker() {
+    const picker = $('#calendar-group-picker');
+    if (picker) picker.style.display = 'none';
 }
 
 // ===== Admin Page Rendering =====
